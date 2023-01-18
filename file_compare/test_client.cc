@@ -17,6 +17,9 @@ void http_callback(WFHttpTask *task)
     const void *body;
     size_t body_len;
     task->get_resp()->get_parsed_body(&body, &body_len);
+
+    fprintf(stderr, "Response Body : %s\n", static_cast<const char *>(body));
+
     std::string decompress_data;
     int ret = Compressor::ungzip(static_cast<const char *>(body), body_len, &decompress_data);
     fprintf(stderr, "Decompress Data : %s", decompress_data.c_str());

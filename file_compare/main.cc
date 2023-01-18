@@ -4,7 +4,6 @@
 #include "wfrest/json.hpp"
 
 using namespace wfrest;
-using Json = nlohmann::json;
 
 static WFFacilities::WaitGroup wait_group(1);
 
@@ -27,39 +26,36 @@ int main()
     svr.POST("/task", [](const HttpReq *req, HttpResp *resp) {
         // We automatically decompress the compressed data sent from the client
         // Support gzip, br only now
-
         if (req->content_type() != APPLICATION_JSON) {
             resp->String("NOT APPLICATION_JSON");
             return;
         }
 
-        auto &body_json = req->json();
+        auto &body = req->body();
         /*
-         body_json example:
-
-         {
-            "id": "0b4e",
-            "basis_server": {
-                "id": "1abb",
-                "name": "drp0",
-                "ip": "127.0.0.1",
-                "path": "/home/a/xxx"
-            },
-            "compare_server_list": [
-                {
-                    "id": "1abb",
-                    "name": "drp1",
-                    "ip": "127.0.0.1",
-                    "path": "/home/a/xxx"
-                }],
-            "file_store_path": "/nfs/file"
-            },
+         * body_json example:
+         * {
+         *   "id": "0b4e",
+         *   "basis_server": {
+         *       "id": "1abb",
+         *       "name": "drp0",
+         *       "ip": "127.0.0.1",
+         *       "path": "/home/a/xxx"
+         *   },
+         *   "compare_server_list": [
+         *       {
+         *           "id": "1abb",
+         *           "name": "drp1",
+         *           "ip": "127.0.0.1",
+         *           "path": "/home/a/xxx"
+         *       }],
+         *   "file_store_path": "/nfs/file"
+         * }
          */
-
-
 
         // server: 这里设置压缩，注意，已经在header里面添加了相应的信息!
         resp->set_compress(Compress::GZIP);
+
         // 这里设置返回的内容!
         resp->String("Test for server send gzip data\n");
     });
