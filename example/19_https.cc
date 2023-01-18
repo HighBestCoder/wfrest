@@ -15,6 +15,7 @@ int main(int argc, char **argv)
 {
     // in cert file 
     // sudo ./gen.sh to generate crt / key files
+    // CRT 是指证书，其与 KEY 是一对的。KEY 密钥文件需要严格保密，而 CRT 证书文件却是公开的。
 	if (argc != 3)
 	{
 		fprintf(stderr, "%s [cert file] [key file]\n",
