@@ -46,8 +46,8 @@ else ()
 endif ()
 
 set(EXAMPLE_LIST
-    13_compession
-    13_compess_client
+    main
+    test_client
 )
 
 foreach(src ${EXAMPLE_LIST})
