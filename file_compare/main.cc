@@ -1,7 +1,8 @@
 #include "workflow/WFFacilities.h"
-#include <csignal>
 #include "wfrest/HttpServer.h"
 #include "wfrest/json.hpp"
+
+#include <csignal>
 
 using namespace wfrest;
 
@@ -17,7 +18,7 @@ int main()
     signal(SIGINT, sig_handler);
 
     HttpServer svr;
-    
+
     // 1. You can `./13_compess_client` 
     // 2. or use python script `python3 13_compress_client.py`
     // 3.

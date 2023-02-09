@@ -32,8 +32,11 @@ include_directories(
 	${CMAKE_CURRENT_BINARY_DIR}
 	${WORKFLOW_INCLUDE_DIR}
 	${WFREST_INCLUDE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/api
     ${CMAKE_CURRENT_SOURCE_DIR}/common
-    ${CMAKE_CURRENT_SOURCE_DIR}/task
+    ${CMAKE_CURRENT_SOURCE_DIR}/compare
+    ${CMAKE_CURRENT_SOURCE_DIR}/content
+    ${CMAKE_CURRENT_SOURCE_DIR}/diff
 )
 
 link_directories(${WFREST_LIB_DIR} ${WORKFLOW_LIB_DIR})
@@ -44,7 +47,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -fPIC -pipe -std=c++11 -fno-except
 if (APPLE)
 	set(WFREST_LIB wfrest workflow pthread OpenSSL::SSL OpenSSL::Crypto protobuf z)
 else ()
-	set(WFREST_LIB wfrest)
+	set(WFREST_LIB wfrest pthread)
 endif ()
 
 set(EXAMPLE_LIST
@@ -53,13 +56,17 @@ set(EXAMPLE_LIST
 )
 
 add_executable(main
-    ./common/dc_common_assert.cc
-    ./common/dc_common_md5.cc
-    ./common/dc_common_error.cc
-    ./common/dc_common_log.cc
-    ./common/cJSON.cc
-    ./main.cc
-    ./task/fc_task.cc
+./common/dc_common_assert.cc
+./common/dc_common_error.cc
+./common/dc_common_log.cc
+./common/cJSON.cc
+./compare/dc_compare.cc
+./main.cc
+./api/dc_api_ctx_default.cc
+./api/dc_api.cc
+./api/dc_api_task.cc
+./diff/dc_diff.cc
+./diff/dc_diff_content.cc
 )
 target_link_libraries(main ${WFREST_LIB})
 
