@@ -2,9 +2,7 @@ cmake_minimum_required(VERSION 3.6)
 
 set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "build type")
 
-project(wfrest_example
-		LANGUAGES C CXX
-)
+project(wfrest_example LANGUAGES C CXX)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR})
 
@@ -25,13 +23,17 @@ if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/workflow/workflow-config.cmake.in")
 endif ()
 
 find_package(ZLIB REQUIRED)
-
 find_package(wfrest REQUIRED CONFIG HINTS ..)
+
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
+
 include_directories(
 	${OPENSSL_INCLUDE_DIR}
 	${CMAKE_CURRENT_BINARY_DIR}
 	${WORKFLOW_INCLUDE_DIR}
 	${WFREST_INCLUDE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/task
 )
 
 link_directories(${WFREST_LIB_DIR} ${WORKFLOW_LIB_DIR})
@@ -50,10 +52,18 @@ set(EXAMPLE_LIST
     test_client
 )
 
-foreach(src ${EXAMPLE_LIST})
-	add_executable(${src} ${src}.cc)
-	target_link_libraries(${src} ${WFREST_LIB})
-endforeach()
+add_executable(main
+    ./common/dc_common_assert.cc
+    ./common/dc_common_md5.cc
+    ./common/dc_common_error.cc
+    ./common/dc_common_log.cc
+    ./common/cJSON.cc
+    ./main.cc
+    ./task/fc_task.cc
+)
+target_link_libraries(main ${WFREST_LIB})
 
-#add_executable(14_blueprint 14_blue_print/blog.cc)
-#target_link_libraries(14_blueprint wfrest)
+add_executable(test_client
+    ./test_client.cc
+)
+target_link_libraries(test_client ${WFREST_LIB})
