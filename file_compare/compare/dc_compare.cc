@@ -10,6 +10,7 @@
 #include <vector>
 #include <functional>
 
+#include <dirent.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -345,13 +346,110 @@ dc_compare_t::check_task_is_failed(dc_api_task_t* &task) {
     return S_SUCCESS;
 }
 
+dc_common_code_t
+dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task, const int worker_id, const char *file_path)
+{
+    dc_common_code_t ret = S_SUCCESS;
+
+    DC_COMMON_ASSERT(task != nullptr);
+    DC_COMMON_ASSERT(task->t_std_idx >= 0);
+    DC_COMMON_ASSERT(task->t_std_idx < (int)task->t_server_info_arr.size());
+
+    // 第一步：我们将会给每个server发送这个文件的比较任务
+
+    // 第二步：请求每个server关于这个文件的md5比较结果!
+
+    // 第三步：如果md5不一样，那么需要请求每个server关于这个文件的行信息
+    //       然后采用hash碰撞的算法，去掉相同的部分!
+
+    return ret;
+}
+
+dc_common_code_t
+dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task, const int worker_id, const char *dir_path)
+{
+    dc_common_code_t ret = S_SUCCESS;
+
+    DC_COMMON_ASSERT(task != nullptr);
+    DC_COMMON_ASSERT(task->t_std_idx >= 0);
+    DC_COMMON_ASSERT(task->t_std_idx < (int)task->t_server_info_arr.size());
+
+    // 递归遍历目录
+    // 遍历目录下的所有文件
+    // 对于每个文件，都要执行一次exe_sql_job_for_file
+    // 对于每个文件，都要执行一次exe_sql_job_for_dir
+    // linux scan dir
+    DIR *d;
+    struct dirent *dir;
+    d = opendir(dir_path);
+    if (d) {
+        while ((dir = readdir(d)) != NULL) {
+            if (dir->d_type == DT_DIR) {
+                if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0) {
+                    continue;
+                }
+                std::string new_path = std::string(dir_path) + "/" + std::string(dir->d_name);
+                ret = exe_sql_job_for_dir(task, worker_id, new_path.c_str());
+                LOG_CHECK_ERR_RETURN(ret);
+            } else {
+                std::string new_path = std::string(dir_path) + "/" + std::string(dir->d_name);
+                ret = exe_sql_job_for_file(task, worker_id, new_path.c_str());
+                LOG_CHECK_ERR_RETURN(ret);
+            }
+        }
+        closedir(d);
+    }
+
+    // TODO 比标准方多出来的文件如何处理？
+
+    return S_SUCCESS;
+}
+
 // 注意，这里运行的都是block的请求
 // 注意，这里并不去管理task的生命周期，只是去执行task
 dc_common_code_t
 dc_compare_t::exe_sql_job(dc_api_task_t *task, const int worker_id)
 {
     dc_common_code_t ret = S_SUCCESS;
-    task->t_task_status = T_TASK_OVER;
+
+    DC_COMMON_ASSERT(task != nullptr);
+    DC_COMMON_ASSERT(task->t_std_idx >= 0);
+    DC_COMMON_ASSERT(task->t_std_idx < (int)task->t_server_info_arr.size());
+
+    // 这里要做的事情：
+    // 首先看要比较的是文件还是目录：
+    // 1. 如果只是单个的文件，那么就直接比较
+    //
+
+    auto &std_server_info = task->t_server_info_arr[task->t_std_idx];
+    auto &compare_file_path = std_server_info.c_path_to_compare;
+
+    // check compare_file_path is DIR or file
+    struct stat file_stat;
+    if (stat(compare_file_path.c_str(), &file_stat) != 0) {
+        LOG_ROOT_ERR(E_DC_COMPARE_EXE_TASK_FAILED,
+                     "stat compare_file_path:%s failed, error:%s",
+                     compare_file_path.c_str(),
+                     strerror(errno));
+        return E_DC_COMPARE_EXE_TASK_FAILED;
+    }
+
+    if (S_ISREG(file_stat.st_mode)) {
+        // 如果是文件，那么就直接比较
+        ret = exe_sql_job_for_file(task, worker_id, compare_file_path.c_str());
+    } else if (S_ISDIR(file_stat.st_mode)) {
+        // 如果是目录，那么就需要一个文件一个文件地比，并且生成相应的结果
+        ret = exe_sql_job_for_dir(task, worker_id, compare_file_path.c_str());
+    } else {
+        LOG_ROOT_ERR(E_DC_COMPARE_EXE_TASK_FAILED,
+                     "compare_file_path:%s is not a file or dir",
+                     compare_file_path.c_str());
+        return E_DC_COMPARE_EXE_TASK_FAILED;
+    }
+
+    // 2. 如果是目录，那么就需要一个文件一个文件地比，并且生成相应的结果
+    //
+
     return ret;
 }
 
@@ -401,6 +499,7 @@ dc_compare_t::try_free_db_list(int worker_id) {
     auto &db_list = task_db_list_[worker_id];
     for (auto iter = db_list.begin(); iter != db_list.end(); iter++) {
         auto &db = *iter;
+        // TODO
         // ret = db->end_recv_sql_result();
         if (ret == S_SUCCESS) {
             delete db;

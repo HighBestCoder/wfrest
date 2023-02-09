@@ -293,7 +293,25 @@ build_task_from_json(const char *task_content,
         task->t_server_info_arr.push_back(server_info);
     }
 
-#undef HANDLE_ERROR_MSG
+    // find and set std_idx value
+    task->t_std_idx = -1;
+    for (size_t i = 0; i < task->t_server_info_arr.size(); i++) {
+        if (task->t_server_info_arr[i].c_standard) {
+            task->t_std_idx = i;
+            break;
+        }
+    }
 
+    if (task->t_std_idx == -1) {
+        HANDLE_ERROR_MSG("no standard server provided",
+                         "task:%s did not provide standard server, task_content:%.*s"
+                         ,
+                         task->t_task_uuid.c_str(),
+                         task_content_len,
+                         task_content);
+        return E_ARG_INVALID;
+    }
+
+#undef HANDLE_ERROR_MSG
     return S_SUCCESS;
 }

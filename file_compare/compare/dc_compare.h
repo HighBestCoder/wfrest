@@ -35,6 +35,12 @@ class dc_compare_t {
   // 线程函数：取一个任务
   dc_api_task_t *pop_one_task(const int worker_id);
 
+  // 文件比较函数
+  dc_common_code_t exe_sql_job_for_file(dc_api_task_t *task, const int worker_id, const char *file_path);
+
+  // 目录比较函数
+  dc_common_code_t exe_sql_job_for_dir(dc_api_task_t *task, const int worker_id, const char *dir_path);
+
   // 线程函数：执行一个任务
   dc_common_code_t exe_sql_job(dc_api_task_t *task, const int worker_id);
 
