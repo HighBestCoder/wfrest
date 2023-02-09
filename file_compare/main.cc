@@ -43,12 +43,12 @@ int main()
          *       "path": "/home/a/xxx"
          *   },
          *   "compare_server_list": [
-         *       {
+         *   {
          *           "id": "1abb",
          *           "name": "drp1",
          *           "ip": "127.0.0.1",
          *           "path": "/home/a/xxx"
-         *       }],
+         *   }],
          *   "file_store_path": "/nfs/file"
          * }
          */
