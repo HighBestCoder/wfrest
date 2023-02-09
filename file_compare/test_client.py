@@ -4,7 +4,7 @@ import requests
 if __name__ == "__main__":
     url = "http://127.0.0.1:8888"
     
-    resp = requests.get(url + "/task")
+    resp = requests.get(url + "/task/task_uuid")
 
     # According to header 'Content-Encoding': 'gzip'
     # gzip data is automatically decompressed by requests

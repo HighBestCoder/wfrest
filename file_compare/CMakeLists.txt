@@ -74,3 +74,18 @@ add_executable(test_client
     ./test_client.cc
 )
 target_link_libraries(test_client ${WFREST_LIB})
+
+add_executable(test_local
+./common/dc_common_assert.cc
+./common/dc_common_error.cc
+./common/dc_common_log.cc
+./common/cJSON.cc
+./compare/dc_compare.cc
+./test.cc
+./api/dc_api_ctx_default.cc
+./api/dc_api.cc
+./api/dc_api_task.cc
+./diff/dc_diff.cc
+./diff/dc_diff_content.cc
+)
+target_link_libraries(test_local ${WFREST_LIB})

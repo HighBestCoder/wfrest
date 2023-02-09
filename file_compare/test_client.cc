@@ -39,11 +39,11 @@ int main()
 
     std::string url = "http://127.0.0.1:8888";
 
-    WFHttpTask *task = WFTaskFactory::create_http_task(url + "/task",
-                                                       4,
-                                                       2,
+    WFHttpTask *task = WFTaskFactory::create_http_task(url + "/task/task_uuid",
+                                                       /*redirect_max*/4,
+                                                       /*retry_max*/2,
                                                        http_callback);
-    std::string content = "Client send for test Gzip";
+    std::string content = "{\"uuid\": \"task_uuid\"}";
     auto *ctx = new CompessContext;
     int ret = Compressor::gzip(&content, &ctx->data);
     if(ret != StatusOK)
@@ -53,6 +53,7 @@ int main()
     task->user_data = ctx;
     task->get_req()->set_method("POST");
     task->get_req()->add_header_pair("Content-Encoding", "gzip");
+    task->get_req()->add_header_pair("Content-Type", "application/json");
     task->get_req()->append_output_body_nocopy(ctx->data.c_str(), ctx->data.size());
     task->start();
     wait_group.wait();

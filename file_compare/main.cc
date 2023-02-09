@@ -43,7 +43,6 @@ int main()
     svr.POST("/task/{uuid}", [&ctx_idx](const HttpReq *req, HttpResp *resp) {
         // We automatically decompress the compressed data sent from the client
         // Support gzip, br only now
-        // TODO
         const std::string& uuid = req->param("uuid");
         if (uuid.empty()) {
             resp->String("uuid is empty");
@@ -51,7 +50,7 @@ int main()
         }
 
         if (req->content_type() != APPLICATION_JSON) {
-            resp->String("NOT APPLICATION_JSON");
+            resp->String(uuid + std::string("NOT APPLICATION_JSON"));
             return;
         }
 
@@ -65,7 +64,7 @@ int main()
                                                body.size(),
                                                DC_CONFIG_TYPE_JSON);
         if (ret != S_SUCCESS) {
-            resp->String("dc_api_task_add failed");
+            resp->String("{\"uuid\": \"" + uuid + "\"}");
             return;
         }
 
