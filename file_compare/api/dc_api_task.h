@@ -21,7 +21,6 @@ typedef struct dc_api_ctx_default_server_info {
     int c_port;                                             // = file agent的端口
     bool c_standard;                                        // 是否是比较的标准方?
     std::vector<std::string> c_excluded_file_regex;         // 有哪些文件会被排除
-    std::string c_compare_result_file_path;                 // 比较结果的文件路径
     std::string c_path_to_compare;                          // 需要比较的路径
     // output part
     dc_common_code_t c_error;                               // 是否出错？
@@ -31,6 +30,7 @@ typedef struct dc_api_ctx_default_server_info {
     struct timeval c_end_time;                              // 结束时间
     uint64_t c_total_time_ms;                               // 总共花费的时间
     uint64_t c_diff_rows;                                   // 不同的行数
+    std::string c_compare_result_file_path;                 // 比较结果的文件路径
 } dc_api_ctx_default_server_info_t;
 
 enum {

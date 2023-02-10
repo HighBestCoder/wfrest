@@ -130,20 +130,6 @@ build_task_server_info(cJSON *server_item,
         }
     }
 
-    // get compare result file path
-    cJSON *server_compare_result_file_path = cJSON_GetObjectItem(server_item, "compare_result_file_path");
-    if (server_compare_result_file_path == NULL ||
-        server_compare_result_file_path->type != cJSON_String ||
-        server_compare_result_file_path->valuestring == NULL ||
-        server_compare_result_file_path->valuestring[0] == '\0') {
-        HANDLE_ERROR_MSG("compare_result_file_path is invalid",
-                         "task:%s given server's compare_result_file_path is invalid",
-                         server_info->c_task->t_task_uuid.c_str());
-        return E_ARG_INVALID;
-    }
-    server_info->c_compare_result_file_path = server_compare_result_file_path->valuestring;
-    DC_COMMON_ASSERT(server_info->c_compare_result_file_path.length() > 0);
-
     // get c_path_to_compare
     cJSON *server_path_to_compare = cJSON_GetObjectItem(server_item, "path_to_compare");
     if (server_path_to_compare == NULL ||
