@@ -28,14 +28,16 @@ class dc_content_t {
   public:
     // 注意： 这些接口都是异步的！
     // 发送命令去获取整个文件的属性
-    virtual dc_common_code_t do_file_attr(const std::string &path) = 0;
+    virtual dc_common_code_t do_file_attr(const std::string &path,
+                                          dc_file_attr_t *attr /*OUT*/) = 0;
     // 异步获取文件的attr
-    virtual dc_common_code_t get_file_attr(dc_file_attr_t *attr) = 0;
+    virtual dc_common_code_t get_file_attr(void) = 0;
 
     // 发送命令去获取整个文件的每一行的sha1
-    virtual dc_common_code_t do_file_content(const std::string &path) = 0;
+    virtual dc_common_code_t do_file_content(const std::string &path,
+                                             std::vector<std::string> *lines_sha1 /*OUT*/) = 0;
     // 异步获取整个文件的每一行的sha1
-    virtual dc_common_code_t get_file_content(std::vector<std::string> *content) = 0;
+    virtual dc_common_code_t get_file_content() = 0;
 };
 
 class dc_content_local_t : public dc_content_t {
@@ -47,14 +49,16 @@ class dc_content_local_t : public dc_content_t {
     // 注意： 这些接口都是异步的！
     // 并且都是由主线程去调用!
     // 发送命令去获取整个文件的属性
-    virtual dc_common_code_t do_file_attr(const std::string &path) override;
+    virtual dc_common_code_t do_file_attr(const std::string &path,
+                                          dc_file_attr_t *attr /*OUT*/) override;
     // 异步获取文件的attr
-    virtual dc_common_code_t get_file_attr(dc_file_attr_t *attr) override;
+    virtual dc_common_code_t get_file_attr(void) override;
 
     // 发送命令去获取整个文件的每一行的sha1
-    virtual dc_common_code_t do_file_content(const std::string &path) override;
+    virtual dc_common_code_t do_file_content(const std::string &path,
+                                             std::vector<std::string> *lines_sha1 /*OUT*/) override;
     // 异步获取整个文件的每一行的sha1
-    virtual dc_common_code_t get_file_content(std::vector<std::string> *content) override;
+    virtual dc_common_code_t get_file_content(void) override;
 
 private:
     // worker_线程的主函数
@@ -106,14 +110,17 @@ class dc_content_remote_t : public dc_content_t {
   public:
     // 注意： 这些接口都是异步的！
     // 发送命令去获取整个文件的属性
-    virtual dc_common_code_t do_file_attr(const std::string &path) override;
+    virtual dc_common_code_t do_file_attr(const std::string &path,
+                                          dc_file_attr_t *attr /*OUT*/) override;
     // 异步获取文件的attr
-    virtual dc_common_code_t get_file_attr(dc_file_attr_t *attr) override;
+    virtual dc_common_code_t get_file_attr(void) override;
 
     // 发送命令去获取整个文件的每一行的sha1
-    virtual dc_common_code_t do_file_content(const std::string &path) override;
+    virtual dc_common_code_t do_file_content(const std::string &path,
+                                             std::vector<std::string> *lines_sha1 /*OUT*/) override;
+
     // 异步获取整个文件的每一行的sha1
-    virtual dc_common_code_t get_file_content(std::vector<std::string> *content) override;
+    virtual dc_common_code_t get_file_content() override;
 };
 
 #endif /* ! _DC_CONTENT_H_ */

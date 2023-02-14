@@ -7,7 +7,8 @@ dc_content_local_t::dc_content_local_t(dc_api_ctx_default_server_info_t *server)
 }
 
 dc_common_code_t
-dc_content_local_t::do_file_attr(const std::string &path)
+dc_content_local_t::do_file_attr(const std::string &path,
+                                 dc_file_attr_t *attr /*OUT*/)
 {
     // 注意下面两个顺序不能乱!
     // 不能先发送消息再设置file_path_
@@ -20,7 +21,7 @@ dc_content_local_t::do_file_attr(const std::string &path)
 }
 
 dc_common_code_t
-dc_content_local_t::get_file_attr(dc_file_attr_t *attr)
+dc_content_local_t::get_file_attr(void)
 {
     bool has_read_msg = false;
     int ret = 0;
@@ -30,7 +31,9 @@ dc_content_local_t::get_file_attr(dc_file_attr_t *attr)
         return E_DC_DB_RETRY;
     }
 
-    LOG_
+    LOG_CHECK_ERR_RETURN(ret);
+
+    return S_SUCCESS;
 }
 
 dc_common_code_t
