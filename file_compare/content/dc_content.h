@@ -99,7 +99,8 @@ private:
     msg_chan_t ret_q_;
 
     // worker_线程读取文件之后，获得的文件的属性
-    dc_file_attr_t file_attr_;
+    dc_file_attr_t *file_attr_;
+    std::vector<std::string> *lines_sha1_;
 };
 
 class dc_content_remote_t : public dc_content_t {
