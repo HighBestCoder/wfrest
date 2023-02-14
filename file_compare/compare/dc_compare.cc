@@ -5,6 +5,8 @@
 #include "dc_diff_content.h"
 #include "dc_diff_failed_content.h"
 
+#include "WFTaskFactory.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <vector>
@@ -346,6 +348,22 @@ dc_compare_t::check_task_is_failed(dc_api_task_t* &task) {
     return S_SUCCESS;
 }
 
+/*
+ * A为标准方!
+ * A: 需要读取B, C上文件的某一行参与比较
+ *
+ * 第一步：A, B, C通读整个文件。然后需要记录每一行的以下信息：
+ *
+ *        <行号，此行在文件的pos, 行的长度，行内容生成的SHA1>
+ *
+ * 第二步：然后B, C将结果列表，压缩后发给A
+ *
+ * 第三步：A将收到的排序后的列表，过滤到相同的行。
+ *
+ * 第四步：将需要读取的行信息发送给B, C。B, C将相应行读出，压缩后发给A
+ *
+ * 第五步：由A生成差异!
+ */
 dc_common_code_t
 dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task, const int worker_id, const char *file_path)
 {
@@ -354,13 +372,6 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task, const int worker_id, con
     DC_COMMON_ASSERT(task != nullptr);
     DC_COMMON_ASSERT(task->t_std_idx >= 0);
     DC_COMMON_ASSERT(task->t_std_idx < (int)task->t_server_info_arr.size());
-
-    // 第一步：我们将会给每个server发送这个文件的比较任务
-
-    // 第二步：请求每个server关于这个文件的md5比较结果!
-
-    // 第三步：如果md5不一样，那么需要请求每个server关于这个文件的行信息
-    //       然后采用hash碰撞的算法，去掉相同的部分!
 
     return ret;
 }

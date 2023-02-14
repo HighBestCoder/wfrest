@@ -22,6 +22,7 @@ typedef struct dc_api_ctx_default_server_info {
     bool c_standard;                                        // 是否是比较的标准方?
     std::vector<std::string> c_excluded_file_regex;         // 有哪些文件会被排除
     std::string c_path_to_compare;                          // 需要比较的路径
+
     // output part
     dc_common_code_t c_error;                               // 是否出错？
     std::string c_error_msg;                                // 出错的原因
