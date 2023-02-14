@@ -76,44 +76,6 @@ class SPSCQueue {
     T *buf_ = nullptr;
 };
 
-struct dc_diff_row_t;
-class row_ptr_chan_t {
-   public:
-    row_ptr_chan_t() : q_(8192) {}
-
-   public:
-
-    bool read_once(dc_diff_row_t* *val) {
-        dc_diff_row_t* v;
-        if (q_.front()) {
-            v = *q_.front();
-            q_.pop();
-
-            if (val) {
-                *val = v;
-            }
-            return true;
-        }
-
-        return false;
-    }
-
-    dc_diff_row_t* read_stuck() {
-        while (!q_.front())
-            ;
-        auto v = *q_.front();
-        q_.pop();
-        return v;
-    }
-
-    void write(dc_diff_row_t* v) {
-        q_.push(v);
-    }
-
-   private:
-    SPSCQueue<dc_diff_row_t*> q_;
-};
-
 class msg_chan_t {
    public:
     msg_chan_t() : q_(64) {}

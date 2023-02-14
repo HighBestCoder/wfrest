@@ -5,7 +5,7 @@
 #include "dc_diff_content.h"
 #include "dc_diff_failed_content.h"
 
-#include "WFTaskFactory.h"
+#include "workflow/WFTaskFactory.h"
 
 #include <stdlib.h>
 #include <string.h>

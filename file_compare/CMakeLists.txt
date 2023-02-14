@@ -65,6 +65,7 @@ add_executable(main
 ./api/dc_api_ctx_default.cc
 ./api/dc_api.cc
 ./api/dc_api_task.cc
+./content/dc_content.cc
 ./diff/dc_diff.cc
 ./diff/dc_diff_content.cc
 )
