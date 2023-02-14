@@ -1,9 +1,13 @@
 #include "dc_content.h"
 #include "dc_common_error.h"
 #include "dc_common_log.h"
+#include "dc_common_trace_log.h"
 
 dc_content_local_t::dc_content_local_t(dc_api_ctx_default_server_info_t *server) : dc_content_t(server) {
     server_ = server;
+}
+
+dc_content_local_t::~dc_content_local_t() {
 }
 
 dc_common_code_t
@@ -31,19 +35,19 @@ dc_content_local_t::get_file_attr(void)
         return E_DC_DB_RETRY;
     }
 
-    LOG_CHECK_ERR_RETURN(ret);
-
+    LOG_CHECK_ERR_RETURN((dc_common_code_t)ret);
     return S_SUCCESS;
 }
 
 dc_common_code_t
-dc_content_local_t::do_file_content(const std::string &path)
+dc_content_local_t::do_file_content(const std::string &path,
+                                    std::vector<std::string> *lines_sha1 /*OUT*/)
 {
-
+    return S_SUCCESS;
 }
 
 dc_common_code_t
-dc_content_local_t::get_file_content(std::vector<std::string> *content)
+dc_content_local_t::get_file_content()
 {
-
+    return S_SUCCESS;
 }
