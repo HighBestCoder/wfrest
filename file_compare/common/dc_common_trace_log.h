@@ -66,9 +66,7 @@ dc_common_trace_log(const char* file_name,
 #define LOG_CHECK_ERR_RETURN(ret, ...)                      \
     do {                                                    \
     if (S_SUCCESS                    != ret   &&            \
-        E_DC_DB_RETRY                != ret   &&            \
-        E_DC_DB_MYSQL_NO_MORE_ROWS   != ret   &&            \
-        E_DC_TASK_MEM_VOPS_NOT_OVER  != ret   ) {           \
+        E_DC_CONTENT_RETRY           != ret ) {             \
         LOG(DC_COMMON_LOG_ERROR, "\t at");                  \
         return ret;                                         \
     }                                                       \

@@ -16,7 +16,7 @@
 typedef struct dc_file_attr {
     uint64_t f_size;
     mode_t f_mode;         // 文件的权限
-    std::string f_ower;    // 文件拥有者
+    std::string f_owner;   // 文件拥有者
     time_t f_last_updated; // 文件最后更新时间
 } dc_file_attr_t;
 
