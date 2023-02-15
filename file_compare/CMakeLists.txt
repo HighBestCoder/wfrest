@@ -39,6 +39,7 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/diff
 )
 
+set(SYS_LIB pthread m ssl crypto)
 link_directories(${WFREST_LIB_DIR} ${WORKFLOW_LIB_DIR})
 
 set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   -Wall -fPIC -pipe -std=gnu90")
@@ -69,12 +70,12 @@ add_executable(main
 ./diff/dc_diff.cc
 ./diff/dc_diff_content.cc
 )
-target_link_libraries(main ${WFREST_LIB})
+target_link_libraries(main ${SYS_LIB} ${WFREST_LIB})
 
 add_executable(test_client
     ./test_client.cc
 )
-target_link_libraries(test_client ${WFREST_LIB})
+target_link_libraries(test_client ${SYS_LIB} ${WFREST_LIB})
 
 add_executable(test_local
 ./common/dc_common_assert.cc
@@ -89,4 +90,4 @@ add_executable(test_local
 ./diff/dc_diff.cc
 ./diff/dc_diff_content.cc
 )
-target_link_libraries(test_local ${WFREST_LIB})
+target_link_libraries(test_local ${SYS_LIB} ${WFREST_LIB})

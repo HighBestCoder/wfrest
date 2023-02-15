@@ -65,15 +65,18 @@ dc_common_trace_log(const char* file_name,
 
 #define LOG_CHECK_ERR_RETURN(ret, ...)                      \
     do {                                                    \
-    if (S_SUCCESS                    != ret   &&            \
-        E_DC_CONTENT_RETRY           != ret ) {             \
+    if (S_SUCCESS                    != ret &&              \
+        E_DC_CONTENT_RETRY           != ret &&              \
+        E_DC_CONTENT_OVER            != ret ) {             \
         LOG(DC_COMMON_LOG_ERROR, "\t at");                  \
         return ret;                                         \
     }                                                       \
 }while (0)
 
 #define LOG_CHECK_ERR(ret) do {                             \
-    if (S_SUCCESS != ret) {                                 \
+    if (S_SUCCESS          != ret &&                        \
+        E_DC_CONTENT_RETRY != ret &&                        \
+        E_DC_CONTENT_OVER  != ret) {                        \
         LOG(DC_COMMON_LOG_ERROR, "\t    at");               \
     }                                                       \
 }while (0)

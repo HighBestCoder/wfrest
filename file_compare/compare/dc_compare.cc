@@ -515,7 +515,7 @@ dc_compare_t::try_free_db_list(int worker_id) {
         if (ret == S_SUCCESS) {
             delete db;
             to_delete_list.push_back(iter);
-        } else if (ret == E_DC_DB_RETRY) {
+        } else if (ret == E_DC_CONTENT_RETRY) {
             // nothing to do
         } else {
             // error happened

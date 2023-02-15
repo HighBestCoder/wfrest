@@ -20,6 +20,10 @@ typedef struct dc_file_attr {
     time_t f_last_updated; // 文件最后更新时间
 } dc_file_attr_t;
 
+// 接口类
+// 1. 读取文件属性
+// 2. 计算文件每一行的sha1
+//    注意：在计算的时候，不要把每一行结束的\n\r也算到行内容里面!
 class dc_content_t {
   public:
     dc_content_t(dc_api_ctx_default_server_info_t *server) {}
@@ -33,9 +37,10 @@ class dc_content_t {
     // 异步获取文件的attr
     virtual dc_common_code_t get_file_attr(void) = 0;
 
-    // 发送命令去获取整个文件的每一行的sha1
+    // 发送命令
     virtual dc_common_code_t do_file_content(const std::string &path,
-                                             std::vector<std::string> *lines_sha1 /*OUT*/) = 0;
+                                              std::vector<std::string> *lines_sha1 /*OUT*/,
+                                              int *empty_lines /*OUT*/) = 0;
     // 异步获取整个文件的每一行的sha1
     virtual dc_common_code_t get_file_content() = 0;
 };
@@ -55,8 +60,10 @@ class dc_content_local_t : public dc_content_t {
     virtual dc_common_code_t get_file_attr(void) override;
 
     // 发送命令去获取整个文件的每一行的sha1
+    // 这里只会发送prepare命令，真正的读取文件内容的命令是在get_file_content中发送的!
     virtual dc_common_code_t do_file_content(const std::string &path,
-                                             std::vector<std::string> *lines_sha1 /*OUT*/) override;
+                                             std::vector<std::string> *lines_sha1 /*OUT*/,
+                                             int *empty_lines /*OUT*/) override;
     // 异步获取整个文件的每一行的sha1
     virtual dc_common_code_t get_file_content(void) override;
 
@@ -67,16 +74,37 @@ private:
     // worker_线程的读取文件的attr
     dc_common_code_t thd_worker_file_attr();
 
+    dc_common_code_t thd_worker_file_content_prepare();
+
     // worker_线程的读取文件的每一行的sha1
-    dc_common_code_t thd_worker_file_content();
+    dc_common_code_t compute_sha1_by_lines(const int read_size);
+    dc_common_code_t thd_worker_file_content_read();
 
   private:
     // cmd的类型
     enum {
         CMD_TYPE_NONE,
         CMD_TYPE_FILE_ATTR,
-        CMD_TYPE_FILE_CONTENT,
+        CMD_TYPE_FILE_CONTENT_PREPARE,
+        CMD_TYPE_FILE_CONTENT_READ
     };
+
+    enum {
+        // 读文件时的两个状态!
+        FILE_CONTENT_READ_INIT,
+        FILE_CONTENT_READ_PREPAR,
+        FILE_CONTENT_READ_OVER,         // 读取16MB内容结束
+        FILE_CONTENT_READ_DO
+    };
+
+    uint8_t *file_read_buf_ { nullptr };
+    uint8_t *file_read_line_buf_ { nullptr };
+    int file_read_line_len_ { 0 };
+    int file_read_fd_ { -1 };
+
+    // get函数现在处在什么状态?
+    // 只能是前面的READ_INIT或者READ_DO
+    int file_read_state_ { FILE_CONTENT_READ_INIT };
 
 private:
     dc_api_ctx_default_server_info_t *server_ {nullptr};
@@ -91,6 +119,7 @@ private:
     // 这个文件的路径不是绝对路径，而是相对于server的路径
     // 所以还需要利用server中的路径来拼一下!
     std::string file_path_;
+    uint64_t file_read_pos_ { 0 };
 
     // 通过这个消息管道向worker_发送命令!
     msg_chan_t cmd_q_;
@@ -99,8 +128,10 @@ private:
     msg_chan_t ret_q_;
 
     // worker_线程读取文件之后，获得的文件的属性
-    dc_file_attr_t *file_attr_;
-    std::vector<std::string> *lines_sha1_;
+    // 这些都是指向主线程中的变量的指针
+    dc_file_attr_t *file_attr_ { nullptr };
+    std::vector<std::string> *lines_sha1_ { nullptr };
+    int *empty_lines_ { nullptr };
 };
 
 class dc_content_remote_t : public dc_content_t {
@@ -118,7 +149,8 @@ class dc_content_remote_t : public dc_content_t {
 
     // 发送命令去获取整个文件的每一行的sha1
     virtual dc_common_code_t do_file_content(const std::string &path,
-                                             std::vector<std::string> *lines_sha1 /*OUT*/) override;
+                                             std::vector<std::string> *lines_sha1 /*OUT*/,
+                                             int *empty_lines /*OUT*/) override;
 
     // 异步获取整个文件的每一行的sha1
     virtual dc_common_code_t get_file_content() override;

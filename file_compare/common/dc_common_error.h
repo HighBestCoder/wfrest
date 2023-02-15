@@ -43,11 +43,18 @@ typedef enum dc_common_code
     E_OS_ENV_UNLINK,
     E_OS_ENV_GETPWUID,
 
+    /* CONTENT */
     E_DC_CONTENT_DIR,
     E_DC_CONTENT_RETRY,
+    E_DC_CONTENT_OVER,
 
-    E_DC_API_CTX_NOT_FOUND, /* API             */
+    /* API */
+    E_DC_API_CTX_NOT_FOUND,
     E_DC_API_CTX_NO_FREE,
+
+    /* TASK */
+    E_DC_TASK_HAS_BEEN_CANCELED,
+    E_DC_TASK_MEM_VOPS_NOT_OVER,
 
     E_DC_COMPARE_CONNECT,
     E_DC_COMPARE_EXE_TASK_FAILED,
