@@ -114,7 +114,7 @@ std::string
 random_generate_big_files(const int lines, const uint64_t total_bytes)
 {
     uint64_t used_bytes = 0;
-    std::string file_path("/tmp/big_file.txt");
+    std::string file_path("/mnt/big_file.txt");
     std::ofstream ofile(file_path);
     if (!ofile.is_open()) {
         printf("Failed to open %s\n", file_path.c_str());
@@ -185,9 +185,12 @@ main(int argc, char **argv)
     std::string file_path(argv[1]);
     TEST_check_single_file(file_path);
 
-    // generate big file
-    file_path = random_generate_big_files(1000000, 1024 * 1024 * 1024);
-    TEST_check_single_file(file_path);
+    for (int line = 1; line < 1000000; line *= 10) {
+        const uint64_t total_bytes = rand() % 1024 * 1024 * 1024 + 1;
+        printf("line %d total_bytes %lu\n", line, total_bytes);
+        file_path = random_generate_big_files(line, total_bytes);
+        TEST_check_single_file(file_path);
+    }
 
     return 0;
 }
