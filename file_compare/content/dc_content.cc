@@ -257,6 +257,18 @@ dc_content_local_t::thd_worker_file_attr()
 }
 
 dc_common_code_t
+dc_content_local_t::thd_worker_clear_pre_line(void)
+{
+    if (file_pre_line_.length() > DC_CONTENT_FILE_READ_BUF) {
+        // use swap to free memory of file_pre_line_
+        std::string temp;
+        file_pre_line_.swap(temp);
+    } else {
+        file_pre_line_.clear();
+    }
+}
+
+dc_common_code_t
 dc_content_local_t::thd_worker_append_to_pre_line(const uint8_t *s, const int len)
 {
     if (len == 0) {
@@ -265,6 +277,7 @@ dc_content_local_t::thd_worker_append_to_pre_line(const uint8_t *s, const int le
 
     DC_COMMON_ASSERT(s != nullptr);
     DC_COMMON_ASSERT(len > 0);
+    DC_COMMON_ASSERT(len <= DC_CONTENT_FILE_READ_BUF);
 
     file_pre_line_.append((const char *)s, len);
 
@@ -305,15 +318,15 @@ dc_content_local_t::thd_worker_compute_sha1_of_single_line(const uint8_t *s, con
     }
 
     if (thd_worker_check_is_empty_line(str_to_compute, str_to_compute_len)) {
-        // empty line, skip
-        file_pre_line_.clear();
+        thd_worker_clear_pre_line();
         (*empty_lines_)++;
         return S_SUCCESS;
     }
 
     lines_sha1_->emplace_back(SHA_DIGEST_LENGTH, 0);
     SHA1(str_to_compute, str_to_compute_len, (unsigned char*)&(lines_sha1_->back())[0]);
-    file_pre_line_.clear();
+    printf("compute sha1 over\n");
+    thd_worker_clear_pre_line();
 
     return S_SUCCESS;
 }
@@ -338,6 +351,8 @@ dc_content_local_t::compute_sha1_by_lines(const int buf_len)
             cur_line_begin = i + 1;
         }
     }
+
+    printf("over\n");
 
     // 如果还余下一点尾巴
     // 需要append到line里面
@@ -440,7 +455,7 @@ dc_content_local_t::thd_worker_file_content_read(void)
                 SHA1((const uint8_t*)file_pre_line_.c_str(),
                      file_pre_line_.length(),
                      (unsigned char*)&(lines_sha1_->back())[0]);
-                file_pre_line_.clear();
+                thd_worker_clear_pre_line();
             }
         }
 
@@ -470,7 +485,7 @@ dc_content_local_t::thd_worker_file_content_read(void)
                 SHA1((const uint8_t*)file_pre_line_.c_str(),
                      file_pre_line_.length(),
                      (unsigned char*)&(lines_sha1_->back())[0]);
-                file_pre_line_.clear();
+                thd_worker_clear_pre_line();
             }
         }
 
