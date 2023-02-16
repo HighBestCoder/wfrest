@@ -190,6 +190,7 @@ main(int argc, char **argv)
         printf("line %d total_bytes %lu\n", line, total_bytes);
         file_path = random_generate_big_files(line, total_bytes);
         TEST_check_single_file(file_path);
+        unlink(file_path.c_str());
     }
 
     return 0;
