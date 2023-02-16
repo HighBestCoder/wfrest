@@ -373,6 +373,21 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task, const int worker_id, con
     DC_COMMON_ASSERT(task->t_std_idx >= 0);
     DC_COMMON_ASSERT(task->t_std_idx < (int)task->t_server_info_arr.size());
 
+    const int task_number = task->t_server_info_arr.size();
+    const int std_idx = task->t_std_idx;
+
+    DC_COMMON_ASSERT(task_number > 0);
+    DC_COMMON_ASSERT(std_idx >= 0);
+    DC_COMMON_ASSERT(std_idx < task_number);
+
+    for (int i = 0; i < task_number; i++) {
+        // TODO
+        // i == task->t_std_idx
+        // 发送到local content
+
+    }
+
+
     return ret;
 }
 
