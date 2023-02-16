@@ -358,7 +358,7 @@ dc_compare_t::check_task_is_failed(dc_api_task_t* &task) {
  *
  * 第二步：然后B, C将结果列表，压缩后发给A
  *
- * 第三步：A将收到的排序后的列表，过滤到相同的行。
+ * 第三步：A将收到列表，过滤到相同的行。
  *
  * 第四步：将需要读取的行信息发送给B, C。B, C将相应行读出，压缩后发给A
  *
@@ -427,11 +427,6 @@ dc_compare_t::exe_sql_job(dc_api_task_t *task, const int worker_id)
     DC_COMMON_ASSERT(task->t_std_idx >= 0);
     DC_COMMON_ASSERT(task->t_std_idx < (int)task->t_server_info_arr.size());
 
-    // 这里要做的事情：
-    // 首先看要比较的是文件还是目录：
-    // 1. 如果只是单个的文件，那么就直接比较
-    //
-
     auto &std_server_info = task->t_server_info_arr[task->t_std_idx];
     auto &compare_file_path = std_server_info.c_path_to_compare;
 
@@ -457,9 +452,6 @@ dc_compare_t::exe_sql_job(dc_api_task_t *task, const int worker_id)
                      compare_file_path.c_str());
         return E_DC_COMPARE_EXE_TASK_FAILED;
     }
-
-    // 2. 如果是目录，那么就需要一个文件一个文件地比，并且生成相应的结果
-    //
 
     return ret;
 }
@@ -510,17 +502,8 @@ dc_compare_t::try_free_db_list(int worker_id) {
     auto &db_list = task_db_list_[worker_id];
     for (auto iter = db_list.begin(); iter != db_list.end(); iter++) {
         auto &db = *iter;
-        // TODO
-        // ret = db->end_recv_sql_result();
-        if (ret == S_SUCCESS) {
-            delete db;
-            to_delete_list.push_back(iter);
-        } else if (ret == E_DC_CONTENT_RETRY) {
-            // nothing to do
-        } else {
-            // error happened
-            DC_COMMON_ASSERT(0);
-        }
+        delete db;
+        to_delete_list.push_back(iter);
     }
 
     for (auto &iter: to_delete_list) {
