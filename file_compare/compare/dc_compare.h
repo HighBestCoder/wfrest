@@ -44,8 +44,8 @@ class dc_compare_t {
   // 线程函数：执行一个任务
   dc_common_code_t exe_sql_job(dc_api_task_t *task, const int worker_id);
 
-  // 线程函数：尝试free db_list
-  dc_common_code_t try_free_db_list(int worker_id);
+  // 线程函数：尝试free content_list
+  dc_common_code_t try_free_content_list(int worker_id);
 
  private:
   std::atomic<bool> exit_;

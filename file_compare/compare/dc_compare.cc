@@ -4,6 +4,7 @@
 #include "dc_diff.h"
 #include "dc_diff_content.h"
 #include "dc_diff_failed_content.h"
+#include "dc_common_trace_log.h"
 
 #include "workflow/WFTaskFactory.h"
 
@@ -365,7 +366,7 @@ dc_compare_t::check_task_is_failed(dc_api_task_t* &task) {
  * 第五步：由A生成差异!
  */
 dc_common_code_t
-dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task, const int worker_id, const char *file_path)
+dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task, const int worker_id, const char *c_file_path)
 {
     dc_common_code_t ret = S_SUCCESS;
 
@@ -380,13 +381,97 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task, const int worker_id, con
     DC_COMMON_ASSERT(std_idx >= 0);
     DC_COMMON_ASSERT(std_idx < task_number);
 
-    for (int i = 0; i < task_number; i++) {
-        // TODO
-        // i == task->t_std_idx
-        // 发送到local content
+    std::vector<dc_file_attr_t> file_attr_list;
+    int i;
 
+    for (i = 0; i < task_number; i++) {
+        // TODO std 用local_content_t
+        // other 用户remote_content_t
+        dc_content_t *content = new dc_content_local_t(&task->t_server_info_arr[i]);
+        DC_COMMON_ASSERT(content != nullptr);
+
+        task_content_list_[worker_id].push_back(content);
+
+        file_attr_list.emplace_back();
     }
 
+    std::string file_path(c_file_path);
+
+    auto &content_list = task_content_list_[worker_id];
+    i = 0;
+    for (auto &content: content_list) {
+        ret = content->do_file_attr(file_path, &file_attr_list[i]);
+        i++;
+    }
+
+    std::vector<bool> job_has_done(task_number, false);
+
+    int job_done_nr = 0;
+    while (job_done_nr < task_number) {
+        i = -1;
+        for (auto &content: content_list) {
+            i++;
+            if (job_has_done[i]) {
+                continue;
+            }
+
+            dc_common_code_t ret = content->get_file_attr();
+            if (ret == E_DC_CONTENT_RETRY) {
+                continue;
+            }
+
+            if (ret == S_SUCCESS) {
+                job_has_done[i] = true;
+                job_done_nr++;
+            } else {
+                job_has_done[i] = true;
+                LOG_CHECK_ERR(ret);
+                job_done_nr++;
+            }
+        }
+    }
+
+    // try to get the file content
+    std::vector<std::vector<std::string>>  file_content_list(task_number);
+    std::vector<int> empty_lines_list(task_number, 0);
+    i = 0;
+    for (auto &content: content_list) {
+        ret = content->do_file_content(file_path, &file_content_list[i], &empty_lines_list[i]);
+        LOG_CHECK_ERR(ret);
+        job_has_done[i] = false;
+        i++;
+    }
+
+    job_done_nr = 0;
+    while (job_done_nr < task_number) {
+        i = -1;
+        for (auto &content: content_list) {
+            i++;
+            if (job_has_done[i]) {
+                continue;
+            }
+
+            dc_common_code_t ret = content->get_file_content();
+            if (ret == E_DC_CONTENT_RETRY) {
+                continue;
+            }
+
+            if (ret == S_SUCCESS) {
+                job_has_done[i] = true;
+                job_done_nr++;
+            } else {
+                job_has_done[i] = true;
+                LOG_CHECK_ERR(ret);
+                job_done_nr++;
+            }
+        }
+    }
+
+    for (auto &content: content_list) {
+        delete content;
+    }
+
+    task->t_task_status = T_TASK_OVER;
 
     return ret;
 }
@@ -508,21 +593,21 @@ dc_compare_t::pop_one_task(const int worker_id) {
 }
 
 dc_common_code_t
-dc_compare_t::try_free_db_list(int worker_id) {
+dc_compare_t::try_free_content_list(int worker_id) {
     dc_common_code_t ret = S_SUCCESS;
 
     std::vector<std::list<dc_content_t*>::iterator> to_delete_list;
 
     // iterate the task_content_list_ of worker_id
-    auto &db_list = task_content_list_[worker_id];
-    for (auto iter = db_list.begin(); iter != db_list.end(); iter++) {
-        auto &db = *iter;
-        delete db;
+    auto &content_list = task_content_list_[worker_id];
+    for (auto iter = content_list.begin(); iter != content_list.end(); iter++) {
+        auto &content = *iter;
+        delete content;
         to_delete_list.push_back(iter);
     }
 
     for (auto &iter: to_delete_list) {
-        db_list.erase(iter);
+        content_list.erase(iter);
     }
 
     return ret;
@@ -548,14 +633,14 @@ dc_common_code_t dc_compare_t::execute(const int worker_id) {
             diff.gen_diff(task);
         }
 
-        try_free_db_list(worker_id);
+        try_free_content_list(worker_id);
 
     } // end while
 
     LOG(DC_COMMON_LOG_INFO, "main worker:%d is over", worker_id);
 
     while (task_content_list_[worker_id].size() > 0) {
-        try_free_db_list(worker_id);
+        try_free_content_list(worker_id);
     }
 
     return S_SUCCESS;
