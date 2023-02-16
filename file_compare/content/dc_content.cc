@@ -476,11 +476,15 @@ dc_content_local_t::thd_worker_file_content_read(void)
             // so we need to copy the current line to
             // the pre_line
             DC_COMMON_ASSERT((file_read_line_len_) < 8192);
-            lines_sha1_->emplace_back(SHA_DIGEST_LENGTH, 0);
-            SHA1(file_read_line_buf_,
-                 file_read_line_len_,
-                 (unsigned char*)&(lines_sha1_->back())[0]);
-            file_read_line_len_ = 0;
+            if (thd_worker_check_is_empty_line(file_read_line_buf_, file_read_line_len_)) {
+                (*empty_lines_)++;
+            } else {
+                lines_sha1_->emplace_back(SHA_DIGEST_LENGTH, 0);
+                SHA1(file_read_line_buf_,
+                     file_read_line_len_,
+                     (unsigned char*)&(lines_sha1_->back())[0]);
+                file_read_line_len_ = 0;
+            }
         }
 
         // 没有内容还需要处理!
@@ -508,11 +512,17 @@ dc_content_local_t::thd_worker_file_content_read(void)
             // so we need to copy the current line to
             // the pre_line
             DC_COMMON_ASSERT((file_read_line_len_) < 8192);
-            lines_sha1_->emplace_back(SHA_DIGEST_LENGTH, 0);
-            SHA1(file_read_line_buf_,
-                 file_read_line_len_,
-                 (unsigned char*)&(lines_sha1_->back())[0]);
-            file_read_line_len_ = 0;
+            // check is empty line
+            if (thd_worker_check_is_empty_line(file_read_line_buf_,
+                                               file_read_line_len_)) {
+                (*empty_lines_)++;
+            } else {
+                lines_sha1_->emplace_back(SHA_DIGEST_LENGTH, 0);
+                SHA1(file_read_line_buf_,
+                     file_read_line_len_,
+                     (unsigned char*)&(lines_sha1_->back())[0]);
+                file_read_line_len_ = 0;
+            }
         }
 
         // close fd

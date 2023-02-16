@@ -181,10 +181,13 @@ main(int argc, char **argv)
         printf("Usage: %s file_path\n", argv[0]);
         return 0;
     }
+    unlink("/tmp/async_line.txt");
+    unlink("/tmp/std_getline.txt");
 
     std::string file_path(argv[1]);
     printf("file_path %s\n", file_path.c_str());
     TEST_check_single_file(file_path);
+
 
     return 0;
 
