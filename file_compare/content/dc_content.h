@@ -103,8 +103,7 @@ private:
     };
 
     uint8_t *file_read_buf_ { nullptr };
-    uint8_t *file_read_line_buf_ { nullptr };
-    int file_read_line_len_ { 0 };
+    std::string file_pre_line_;
     int file_read_fd_ { -1 };
 
     // get函数现在处在什么状态?

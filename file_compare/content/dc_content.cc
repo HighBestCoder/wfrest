@@ -14,8 +14,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#define DC_CONTENT_MEM_ALIGN            8192
-#define DC_CONTENT_LINE_MAX_LEN         8192                // 一行最大的长度 8K
+#define DC_CONTENT_MEM_ALIGN            8192                // 8K
 #define DC_CONTENT_FILE_READ_BUF        16777216            // 读文件的缓冲区大小 16M
 
 dc_content_local_t::dc_content_local_t(dc_api_ctx_default_server_info_t *server) :
@@ -44,15 +43,8 @@ dc_content_local_t::~dc_content_local_t() {
         free(file_read_buf_);
         file_read_buf_ = nullptr;
     }
-    if (file_read_line_buf_) {
-        free(file_read_line_buf_);
-        file_read_line_buf_ = nullptr;
-        file_read_line_len_ = 0;
-    }
 
     DC_COMMON_ASSERT(file_read_buf_ == nullptr);
-    DC_COMMON_ASSERT(file_read_line_buf_ == nullptr);
-    DC_COMMON_ASSERT(file_read_line_len_ == 0);
     DC_COMMON_ASSERT(file_read_fd_ == -1);
 }
 
@@ -271,15 +263,10 @@ dc_content_local_t::thd_worker_append_to_pre_line(const uint8_t *s, const int le
         return S_SUCCESS;
     }
 
-    uint8_t *dst = file_read_line_buf_ + file_read_line_len_;
-
     DC_COMMON_ASSERT(s != nullptr);
     DC_COMMON_ASSERT(len > 0);
 
-    DC_COMMON_ASSERT(file_read_line_len_ + len < DC_CONTENT_LINE_MAX_LEN);
-
-    memcpy(dst, s, len);
-    file_read_line_len_ += len;
+    file_pre_line_.append((const char *)s, len);
 
     return S_SUCCESS;
 }
@@ -310,41 +297,23 @@ dc_content_local_t::thd_worker_compute_sha1_of_single_line(const uint8_t *s, con
     DC_COMMON_ASSERT(s != nullptr);
     DC_COMMON_ASSERT(len >= 0);
 
-    if (file_read_line_len_ > 0) {
+    if (!file_pre_line_.empty()) {
         // append to line
-        DC_COMMON_ASSERT((file_read_line_len_ + len) < DC_CONTENT_LINE_MAX_LEN);
         thd_worker_append_to_pre_line(s, len);
-
-        str_to_compute = file_read_line_buf_;
-        str_to_compute_len = file_read_line_len_;
+        str_to_compute = (const uint8_t*)file_pre_line_.c_str();
+        str_to_compute_len = file_pre_line_.length();
     }
 
     if (thd_worker_check_is_empty_line(str_to_compute, str_to_compute_len)) {
         // empty line, skip
-        file_read_line_len_ = 0;
+        file_pre_line_.clear();
         (*empty_lines_)++;
         return S_SUCCESS;
     }
 
-    {
-        int fd = open("/tmp/async_line.txt", O_CREAT | O_WRONLY | O_APPEND, 0644);
-        if (fd < 0) {
-            LOG_ROOT_ERR(E_OS_ENV_OPEN,
-                         "open file failed, errno=%d, errstr=%s",
-                         errno,
-                         strerror(errno));
-            return E_OS_ENV_OPEN;
-        }
-        char str_out[64];
-        int out_len = snprintf(str_out, sizeof(str_out), "%d\n", str_to_compute_len);
-        int write_bytes = write(fd, str_out, out_len);
-        DC_COMMON_ASSERT(write_bytes == out_len);
-        close(fd);
-    }
-
     lines_sha1_->emplace_back(SHA_DIGEST_LENGTH, 0);
     SHA1(str_to_compute, str_to_compute_len, (unsigned char*)&(lines_sha1_->back())[0]);
-    file_read_line_len_ = 0;
+    file_pre_line_.clear();
 
     return S_SUCCESS;
 }
@@ -406,19 +375,6 @@ dc_content_local_t::thd_worker_file_content_prepare(void)
     }
     DC_COMMON_ASSERT(file_read_buf_ != nullptr);
 
-    if (file_read_line_buf_ == nullptr) {
-        if (posix_memalign((void **)&file_read_line_buf_,
-                           DC_CONTENT_MEM_ALIGN,
-                           DC_CONTENT_LINE_MAX_LEN) != 0) {
-            LOG_ROOT_ERR(E_OS_ENV_MEM,
-                        "posix_memalign failed, errno=%d, errstr=%s",
-                        errno,
-                        strerror(errno));
-            return E_OS_ENV_MEM;
-        }
-    }
-    DC_COMMON_ASSERT(file_read_line_buf_ != nullptr);
-
     DC_COMMON_ASSERT(file_read_fd_ == -1);
 
     file_read_fd_ = open(file_path_.c_str(), O_RDONLY | O_DIRECT);
@@ -450,7 +406,6 @@ dc_content_local_t::thd_worker_file_content_read(void)
     DC_COMMON_ASSERT(file_path_.size() > 0);
     DC_COMMON_ASSERT(lines_sha1_ != nullptr);
     DC_COMMON_ASSERT(empty_lines_ != nullptr);
-    DC_COMMON_ASSERT(file_read_line_len_ < DC_CONTENT_LINE_MAX_LEN);
 
     //DC_COMMON_ASSERT(file_read_state_ == FILE_CONTENT_READ_PREPAR);
     DC_COMMON_ASSERT(file_read_fd_ >= 0);
@@ -470,7 +425,7 @@ dc_content_local_t::thd_worker_file_content_read(void)
 
     if (read_len == 0) {
         // we have read all the file content
-        if (file_read_line_len_ > 0) {
+        if (!file_pre_line_.empty()) {
             // we MUST compute the sha1 of the pre_line
             // because the pre_line may not be empty
             // and we need to compute the sha1 of the
@@ -478,20 +433,18 @@ dc_content_local_t::thd_worker_file_content_read(void)
             // and then clear the pre_line.
             // so we need to copy the current line to
             // the pre_line
-            DC_COMMON_ASSERT((file_read_line_len_) < 8192);
-            if (thd_worker_check_is_empty_line(file_read_line_buf_, file_read_line_len_)) {
+            if (thd_worker_check_is_empty_line((const uint8_t*)file_pre_line_.c_str(), file_pre_line_.length())) {
                 (*empty_lines_)++;
             } else {
                 lines_sha1_->emplace_back(SHA_DIGEST_LENGTH, 0);
-                SHA1(file_read_line_buf_,
-                     file_read_line_len_,
+                SHA1((const uint8_t*)file_pre_line_.c_str(),
+                     file_pre_line_.length(),
                      (unsigned char*)&(lines_sha1_->back())[0]);
-                file_read_line_len_ = 0;
+                file_pre_line_.clear();
             }
         }
 
         // 没有内容还需要处理!
-        DC_COMMON_ASSERT(file_read_line_len_ == 0);
         DC_COMMON_ASSERT(read_len == 0);
 
         // close fd
@@ -506,25 +459,18 @@ dc_content_local_t::thd_worker_file_content_read(void)
         compute_sha1_by_lines(read_len);
 
         // we have read all the file content
-        if (file_read_line_len_ > 0) {
+        if (!file_pre_line_.empty()) {
             // we MUST compute the sha1 of the pre_line
-            // because the pre_line may not be empty
-            // and we need to compute the sha1 of the
-            // pre_line and the current line
-            // and then clear the pre_line.
-            // so we need to copy the current line to
-            // the pre_line
-            DC_COMMON_ASSERT((file_read_line_len_) < 8192);
             // check is empty line
-            if (thd_worker_check_is_empty_line(file_read_line_buf_,
-                                               file_read_line_len_)) {
+            if (thd_worker_check_is_empty_line((const uint8_t*)file_pre_line_.c_str(),
+                                               file_pre_line_.length())) {
                 (*empty_lines_)++;
             } else {
                 lines_sha1_->emplace_back(SHA_DIGEST_LENGTH, 0);
-                SHA1(file_read_line_buf_,
-                     file_read_line_len_,
+                SHA1((const uint8_t*)file_pre_line_.c_str(),
+                     file_pre_line_.length(),
                      (unsigned char*)&(lines_sha1_->back())[0]);
-                file_read_line_len_ = 0;
+                file_pre_line_.clear();
             }
         }
 
