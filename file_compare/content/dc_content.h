@@ -79,7 +79,7 @@ private:
     // worker_线程的读取文件的每一行的sha1
     // 返回1表示遇到了空行
     // 返回0表示计算了sha1
-    dc_common_code_t thd_worker_clear_pre_line();
+    void thd_worker_clear_pre_line();
     dc_common_code_t thd_worker_append_to_pre_line(const uint8_t *s, const int len);
     bool thd_worker_check_is_empty_line(const uint8_t *s, const int len);
     dc_common_code_t thd_worker_compute_sha1_of_single_line(const uint8_t *s, const int len);

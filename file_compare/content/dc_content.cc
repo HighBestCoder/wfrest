@@ -256,7 +256,7 @@ dc_content_local_t::thd_worker_file_attr()
     return S_SUCCESS;
 }
 
-dc_common_code_t
+void
 dc_content_local_t::thd_worker_clear_pre_line(void)
 {
     if (file_pre_line_.length() > DC_CONTENT_FILE_READ_BUF) {
@@ -325,7 +325,6 @@ dc_content_local_t::thd_worker_compute_sha1_of_single_line(const uint8_t *s, con
 
     lines_sha1_->emplace_back(SHA_DIGEST_LENGTH, 0);
     SHA1(str_to_compute, str_to_compute_len, (unsigned char*)&(lines_sha1_->back())[0]);
-    printf("compute sha1 over\n");
     thd_worker_clear_pre_line();
 
     return S_SUCCESS;
