@@ -56,19 +56,23 @@ set(EXAMPLE_LIST
     test_client
 )
 
-add_executable(main
+set(SRC
 ./common/dc_common_assert.cc
 ./common/dc_common_error.cc
 ./common/dc_common_log.cc
 ./common/cJSON.cc
 ./compare/dc_compare.cc
-./main.cc
 ./api/dc_api_ctx_default.cc
 ./api/dc_api.cc
 ./api/dc_api_task.cc
 ./content/dc_content.cc
 ./diff/dc_diff.cc
 ./diff/dc_diff_content.cc
+)
+
+add_executable(main
+./main.cc
+${SRC}
 )
 target_link_libraries(main ${SYS_LIB} ${WFREST_LIB})
 
@@ -78,16 +82,13 @@ add_executable(test_client
 target_link_libraries(test_client ${SYS_LIB} ${WFREST_LIB})
 
 add_executable(test_local
-./common/dc_common_assert.cc
-./common/dc_common_error.cc
-./common/dc_common_log.cc
-./common/cJSON.cc
-./compare/dc_compare.cc
 ./test.cc
-./api/dc_api_ctx_default.cc
-./api/dc_api.cc
-./api/dc_api_task.cc
-./diff/dc_diff.cc
-./diff/dc_diff_content.cc
+${SRC}
 )
 target_link_libraries(test_local ${SYS_LIB} ${WFREST_LIB})
+
+add_executable(test_file_sha1
+test_file_sha1.cc
+${SRC}
+)
+target_link_libraries(test_file_sha1 ${SYS_LIB} ${WFREST_LIB})

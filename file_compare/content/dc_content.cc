@@ -265,61 +265,114 @@ dc_content_local_t::thd_worker_file_attr()
 }
 
 dc_common_code_t
+dc_content_local_t::thd_worker_append_to_pre_line(const uint8_t *s, const int len)
+{
+    if (len == 0) {
+        return S_SUCCESS;
+    }
+
+    uint8_t *dst = file_read_line_buf_ + file_read_line_len_;
+
+    DC_COMMON_ASSERT(s != nullptr);
+    DC_COMMON_ASSERT(len > 0);
+
+    memcpy(dst, s, len);
+    file_read_line_len_ += len;
+
+    return S_SUCCESS;
+}
+
+bool
+dc_content_local_t::thd_worker_check_is_empty_line(const uint8_t *s, const int len)
+{
+    int i = 0;
+
+    DC_COMMON_ASSERT(s != nullptr);
+    DC_COMMON_ASSERT(len >= 0);
+
+    for (i = 0; i < len; i++) {
+        if (!isspace(s[i])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+dc_common_code_t
+dc_content_local_t::thd_worker_compute_sha1_of_single_line(const uint8_t *s, const int len)
+{
+    const uint8_t *str_to_compute = s;
+    int str_to_compute_len = len;
+
+    DC_COMMON_ASSERT(s != nullptr);
+    DC_COMMON_ASSERT(len >= 0);
+
+    if (file_read_line_len_ > 0) {
+        // append to line
+        DC_COMMON_ASSERT((file_read_line_len_ + len) < DC_CONTENT_LINE_MAX_LEN);
+        thd_worker_append_to_pre_line(s, len);
+
+        str_to_compute = file_read_line_buf_;
+        str_to_compute_len = file_read_line_len_;
+    }
+
+    if (thd_worker_check_is_empty_line(str_to_compute, str_to_compute_len)) {
+        // empty line, skip
+        file_read_line_len_ = 0;
+        (*empty_lines_)++;
+        return S_SUCCESS;
+    }
+
+    {
+        int fd = open("/tmp/async_line.txt", O_CREAT | O_WRONLY | O_APPEND, 0644);
+        if (fd < 0) {
+            LOG_ROOT_ERR(E_OS_ENV_OPEN,
+                         "open file failed, errno=%d, errstr=%s",
+                         errno,
+                         strerror(errno));
+            return E_OS_ENV_OPEN;
+        }
+        char str_out[64];
+        int out_len = snprintf(str_out, sizeof(str_out), "%d\n", str_to_compute_len);
+        int write_bytes = write(fd, str_out, out_len);
+        DC_COMMON_ASSERT(write_bytes == out_len);
+        close(fd);
+    }
+
+    lines_sha1_->emplace_back(SHA_DIGEST_LENGTH, 0);
+    SHA1(str_to_compute, str_to_compute_len, (unsigned char*)&(lines_sha1_->back())[0]);
+    file_read_line_len_ = 0;
+
+    return S_SUCCESS;
+}
+
+dc_common_code_t
 dc_content_local_t::compute_sha1_by_lines(const int buf_len)
 {
     int i = 0;
-    int front_pos = 0;
+    int cur_line_begin = 0;
+    dc_common_code_t ret;
 
     DC_COMMON_ASSERT(buf_len > 0);
 
     for (i = 0; i < buf_len; i++) {
         char c = file_read_buf_[i];
-        if (c == '\r' || c == '\n') {
-            if (file_read_line_len_ > 0) {
-                // we MUST copy the [front_pos, i) to pre_line
-                // and then compute the sha1.
-                // because the pre_line may not be empty
-                // and we need to compute the sha1 of the
-                // pre_line and the current line
-                // and then clear the pre_line.
-                // so we need to copy the current line to
-                // the pre_line
-                DC_COMMON_ASSERT((file_read_line_len_ + i - front_pos) < 8192);
-                if (i - front_pos > 0) {
-                    memcpy(file_read_line_buf_ + file_read_line_len_,
-                           file_read_buf_ + front_pos,
-                           i - front_pos);
-                }
-                file_read_line_len_ += i - front_pos;
-                lines_sha1_->emplace_back(SHA_DIGEST_LENGTH, 0);
-                SHA1(file_read_line_buf_,
-                     file_read_line_len_,
-                     (unsigned char*)&(lines_sha1_->back())[0]);
-                file_read_line_len_ = 0;
-            } else {
-                if (i - front_pos > 0) {
-                    // emplace a string into lines_sha1
-                    // {SHA_DIGEST_LENGTH, 0}
-                    lines_sha1_->emplace_back(SHA_DIGEST_LENGTH, 0);
-                    SHA1(file_read_buf_ + front_pos,
-                         i - front_pos,
-                         (unsigned char*)&(lines_sha1_->back())[0]);
-                } else {
-                    (*empty_lines_)++;
-                }
-            }
-            front_pos = i + 1;
+        if (c == '\n') {
+            // 读到了一行[cur_line_begin, i)
+            // 计算sha1
+            DC_COMMON_ASSERT(i >= cur_line_begin);
+            ret = thd_worker_compute_sha1_of_single_line(file_read_buf_ + cur_line_begin, i - cur_line_begin);
+            LOG_CHECK_ERR_RETURN(ret);
+            cur_line_begin = i + 1;
         }
     }
 
     // 如果还余下一点尾巴
     // 需要append到line里面
-    if (front_pos < buf_len) {
-        DC_COMMON_ASSERT((file_read_line_len_ + buf_len - front_pos) < 8192);
-        memcpy(file_read_line_buf_ + file_read_line_len_,
-               file_read_buf_ + front_pos,
-               buf_len - front_pos);
-        file_read_line_len_ += buf_len - front_pos;
+    if (cur_line_begin < buf_len) {
+        ret = thd_worker_append_to_pre_line(file_read_buf_ + cur_line_begin, buf_len - cur_line_begin);
+        LOG_CHECK_ERR_RETURN(ret);
     }
 
     return S_SUCCESS;
@@ -396,7 +449,7 @@ dc_content_local_t::thd_worker_file_content_read(void)
     DC_COMMON_ASSERT(lines_sha1_ != nullptr);
     DC_COMMON_ASSERT(empty_lines_ != nullptr);
 
-    DC_COMMON_ASSERT(file_read_state_ == FILE_CONTENT_READ_PREPAR);
+    //DC_COMMON_ASSERT(file_read_state_ == FILE_CONTENT_READ_PREPAR);
     DC_COMMON_ASSERT(file_read_fd_ >= 0);
 
     // read 16MB from file
@@ -434,6 +487,10 @@ dc_content_local_t::thd_worker_file_content_read(void)
         DC_COMMON_ASSERT(file_read_line_len_ == 0);
         DC_COMMON_ASSERT(read_len == 0);
 
+        // close fd
+        close(file_read_fd_);
+        file_read_fd_ = -1;
+
         return E_DC_CONTENT_OVER;
     }
 
@@ -457,6 +514,10 @@ dc_content_local_t::thd_worker_file_content_read(void)
                  (unsigned char*)&(lines_sha1_->back())[0]);
             file_read_line_len_ = 0;
         }
+
+        // close fd
+        close(file_read_fd_);
+        file_read_fd_ = -1;
 
         return E_DC_CONTENT_OVER;
     }
