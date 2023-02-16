@@ -276,6 +276,8 @@ dc_content_local_t::thd_worker_append_to_pre_line(const uint8_t *s, const int le
     DC_COMMON_ASSERT(s != nullptr);
     DC_COMMON_ASSERT(len > 0);
 
+    DC_COMMON_ASSERT(file_read_line_len_ + len < DC_CONTENT_LINE_MAX_LEN);
+
     memcpy(dst, s, len);
     file_read_line_len_ += len;
 
@@ -448,6 +450,7 @@ dc_content_local_t::thd_worker_file_content_read(void)
     DC_COMMON_ASSERT(file_path_.size() > 0);
     DC_COMMON_ASSERT(lines_sha1_ != nullptr);
     DC_COMMON_ASSERT(empty_lines_ != nullptr);
+    DC_COMMON_ASSERT(file_read_line_len_ < DC_CONTENT_LINE_MAX_LEN);
 
     //DC_COMMON_ASSERT(file_read_state_ == FILE_CONTENT_READ_PREPAR);
     DC_COMMON_ASSERT(file_read_fd_ >= 0);
