@@ -351,8 +351,6 @@ dc_content_local_t::compute_sha1_by_lines(const int buf_len)
         }
     }
 
-    printf("over\n");
-
     // 如果还余下一点尾巴
     // 需要append到line里面
     if (cur_line_begin < buf_len) {
