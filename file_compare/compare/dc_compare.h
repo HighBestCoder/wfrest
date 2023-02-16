@@ -77,7 +77,7 @@ class dc_compare_t {
   std::vector<std::condition_variable> task_cond_list_;
   std::vector<std::list<dc_api_task_t *>> task_list_;
   std::vector<std::unordered_map<std::string, dc_api_task_t*>> task_status_list_;
-  std::vector<std::list<dc_content_t *>> task_db_list_;
+  std::vector<std::list<dc_content_t *>> task_content_list_;
 };
 
 #endif /* ! _DC_COMPARE_H_ */

@@ -23,7 +23,7 @@ dc_compare_t::dc_compare_t(const uint32_t thd_nr)
       task_cond_list_(thd_nr),
       task_list_(thd_nr),
       task_status_list_(thd_nr),
-      task_db_list_(thd_nr) {
+      task_content_list_(thd_nr) {
     exit_ = false;
     DC_COMMON_ASSERT(thd_nr);
     for (uint32_t i = 0; i < thd_nr; i++) {
@@ -513,8 +513,8 @@ dc_compare_t::try_free_db_list(int worker_id) {
 
     std::vector<std::list<dc_content_t*>::iterator> to_delete_list;
 
-    // iterate the task_db_list_ of worker_id
-    auto &db_list = task_db_list_[worker_id];
+    // iterate the task_content_list_ of worker_id
+    auto &db_list = task_content_list_[worker_id];
     for (auto iter = db_list.begin(); iter != db_list.end(); iter++) {
         auto &db = *iter;
         delete db;
@@ -554,7 +554,7 @@ dc_common_code_t dc_compare_t::execute(const int worker_id) {
 
     LOG(DC_COMMON_LOG_INFO, "main worker:%d is over", worker_id);
 
-    while (task_db_list_[worker_id].size() > 0) {
+    while (task_content_list_[worker_id].size() > 0) {
         try_free_db_list(worker_id);
     }
 
