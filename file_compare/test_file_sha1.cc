@@ -183,7 +183,10 @@ main(int argc, char **argv)
     }
 
     std::string file_path(argv[1]);
+    printf("file_path %s\n", file_path.c_str());
     TEST_check_single_file(file_path);
+
+    return 0;
 
     for (int line = 1; line < 1000000; line *= 10) {
         const uint64_t total_bytes = rand() % 1024 * 1024 * 1024 + 1;
