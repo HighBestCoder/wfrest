@@ -172,7 +172,7 @@ main(int argc, char **argv)
          * 因为是异步的，所以有可能任务还在执行
          * 并未结束
          */
-        if (error == 41 /*还没有结束 */) {
+        if (error == 18 /*还没有结束 */) {
             /* 最好是在这里有个短暂的sleep*/
             continue;
         }

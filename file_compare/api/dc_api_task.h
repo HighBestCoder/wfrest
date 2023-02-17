@@ -39,6 +39,26 @@ enum {
     FC_TASK_RESULT_INVALID,
 };
 
+// 单个文件在单个server上，与std的差异信息
+typedef struct dc_api_task_file_compare_result_server_diff {
+    std::string d_center_name;
+    int64_t d_file_size; // -1 no exist;
+    std::string d_permission;
+    std::string d_owner;
+    std::string d_last_updated_time;
+    std::string d_diff_file_path;
+    std::string d_file_mode;
+    int d_error_code;
+    std::string d_error_msg;
+    bool d_is_diff { false };
+} dc_api_task_file_compare_result_server_diff_t;
+
+typedef struct dc_api_task_single_file_compare_result {
+    std::string r_filename_no_dir_path;
+    std::string r_dir_path;
+    std::vector<dc_api_task_file_compare_result_server_diff_t> r_server_diff_arr;
+} dc_api_task_single_file_compare_result_t;
+
 typedef struct dc_api_task {
     // input part
     std::string t_task_uuid;                                // 任务的uuid
@@ -54,6 +74,10 @@ typedef struct dc_api_task {
     uint64_t t_printed_bytes;                               // 已经输出的字节数
     uint64_t t_printed_diff_rows;                           // 已经输出的不同行数
     uint64_t t_sql_error_nr;                                // 文件读取错误的次数
+
+    // TODO 如果比较的是目录，那么返回值可能很大，这里需要考虑怎么处理
+    std::string t_compare_result;                           // 比较结果
+    std::vector<dc_api_task_single_file_compare_result_t>  t_fs_result; // 每个文件的比较结果
 } dc_api_task_t;
 
 dc_common_code_t
@@ -61,5 +85,8 @@ build_task_from_json(const char *task_content,
                      const uint32_t task_content_len,
                      cJSON *root,
                      dc_api_task_t *task/*已经生成内存*/);
+
+dc_common_code_t
+build_compare_result_json(dc_api_task_t *task /*CHANGED*/);
 
 #endif /* ! _FC_TASK_H_ */

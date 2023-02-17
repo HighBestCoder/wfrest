@@ -74,6 +74,8 @@ dc_content_local_t::get_file_attr(void)
         return E_DC_CONTENT_RETRY;
     }
 
+    LOG(DC_COMMON_LOG_INFO, "center:%s return attr ret code:%d", server_->c_center.c_str(), ret);
+
     LOG_CHECK_ERR_RETURN((dc_common_code_t)ret);
     return S_SUCCESS;
 }
@@ -248,10 +250,15 @@ dc_content_local_t::thd_worker_file_attr()
         return E_OS_ENV_GETPWUID;
     }
 
+    LOG(DC_COMMON_LOG_INFO, "begin to set owner of file:%s", file_path_.c_str());
     file_attr_->f_owner = pwd->pw_name;
+    LOG(DC_COMMON_LOG_INFO, "set owner of file:%s, owner:%s", file_path_.c_str(), file_attr_->f_owner.c_str());
 
     // get file last updated time
     file_attr_->f_last_updated = file_stat.st_mtime;
+
+    // set a memory barrier here
+    std::atomic_thread_fence(std::memory_order_release);
 
     return S_SUCCESS;
 }

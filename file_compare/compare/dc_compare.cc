@@ -204,55 +204,15 @@ dc_compare_t::result(std::string task_uuid,
             "task:%s is over, begin to work on get result",
             task->t_task_uuid.c_str());
 
-        auto &filename = task->t_task_uuid;
-
-        // use system call fstat to get file length
-        struct stat file_stat;
-        if (stat(filename.c_str(), &file_stat) != 0) {
-            LOG_ROOT_ERR(E_OS_ENV_STAT,
-                         "task:%s result file:%s not exist",
-                         task_uuid.c_str(),
-                         filename.c_str());
-            return E_OS_ENV_STAT;
+        if (task_out_buf_len < task->t_compare_result.length() || task_out_buf == nullptr) {
+            *result_bytes = task->t_compare_result.length();
+            return S_SUCCESS;
         }
 
-        *result_bytes = file_stat.st_size;
-
-        // task over
         // copy result to task_out_buf
-        if (task_out_buf != nullptr && task_out_buf_len > 0) {
-            if (task_out_buf_len < file_stat.st_size) {
-                LOG_ROOT_ERR(E_ARG_INVALID,
-                             "task:%s result buf len:%d not enough:%lu",
-                             task_uuid.c_str(),
-                             task_out_buf_len,
-                             (uint32_t)file_stat.st_size);
-                return E_ARG_INVALID;
-            }
+        memcpy(task_out_buf, task->t_compare_result.c_str(), task->t_compare_result.length());
+        *result_bytes = task->t_compare_result.length();
 
-            // get file content and copy to task_out_buf
-            FILE *fp = fopen(filename.c_str(), "r");
-            if (fp == nullptr) {
-                LOG_ROOT_ERR(E_OS_ENV_OPEN,
-                             "task:%s result file:%s open failed",
-                             task_uuid.c_str(),
-                             filename.c_str());
-                return E_OS_ENV_OPEN;
-            }
-
-            // read all content into task_out_buf
-            if (fread(task_out_buf, file_stat.st_size, 1, fp) != 1) {
-                LOG_ROOT_ERR(E_OS_ENV_READ,
-                             "task:%s result file:%s read failed",
-                             task_uuid.c_str(),
-                             filename.c_str());
-                fclose(fp);
-                return E_OS_ENV_READ;
-            }
-
-            fclose(fp);
-            fp = nullptr;
-        }
         return S_SUCCESS;
     }
 
@@ -366,9 +326,14 @@ dc_compare_t::check_task_is_failed(dc_api_task_t* &task) {
  * 第五步：由A生成差异!
  */
 dc_common_code_t
-dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task, const int worker_id, const char *c_file_path)
+dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
+                                   const int worker_id,
+                                   const char *c_file_path,
+                                   dc_api_task_single_file_compare_result_t *compare_result/*CHANGED*/)
 {
     dc_common_code_t ret = S_SUCCESS;
+
+    LOG(DC_COMMON_LOG_INFO, "[main] task:%s compare file:%s", task->t_task_uuid.c_str(), c_file_path);
 
     DC_COMMON_ASSERT(task != nullptr);
     DC_COMMON_ASSERT(task->t_std_idx >= 0);
@@ -381,36 +346,32 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task, const int worker_id, con
     DC_COMMON_ASSERT(std_idx >= 0);
     DC_COMMON_ASSERT(std_idx < task_number);
 
-    std::vector<dc_file_attr_t> file_attr_list;
-    int i;
-
-    for (i = 0; i < task_number; i++) {
+    for (int i = 0; i < task_number; i++) {
         // TODO std 用local_content_t
         // other 用户remote_content_t
         dc_content_t *content = new dc_content_local_t(&task->t_server_info_arr[i]);
         DC_COMMON_ASSERT(content != nullptr);
 
         task_content_list_[worker_id].push_back(content);
-
-        file_attr_list.emplace_back();
     }
 
     std::string file_path(c_file_path);
+    std::vector<dc_file_attr_t> file_attr_list(task_number);
 
     auto &content_list = task_content_list_[worker_id];
-    i = 0;
-    for (auto &content: content_list) {
-        ret = content->do_file_attr(file_path, &file_attr_list[i]);
-        i++;
+    for (int i = 0; i < content_list.size(); i++) {
+        ret = content_list[i]->do_file_attr(file_path, &file_attr_list[i]);
+        LOG_CHECK_ERR_RETURN(ret);
     }
 
     std::vector<bool> job_has_done(task_number, false);
 
+    LOG(DC_COMMON_LOG_INFO, "[main] task_number:%d", task_number);
+
     int job_done_nr = 0;
     while (job_done_nr < task_number) {
-        i = -1;
-        for (auto &content: content_list) {
-            i++;
+        for (int i = 0; i < task_number; i++) {
+            auto &content = content_list[i];
             if (job_has_done[i]) {
                 continue;
             }
@@ -420,6 +381,8 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task, const int worker_id, con
                 continue;
             }
 
+            LOG(DC_COMMON_LOG_INFO, "[main] center:%s get_file_attr ret:%d", task->t_server_info_arr[i].c_center.c_str(), ret);
+
             if (ret == S_SUCCESS) {
                 job_has_done[i] = true;
                 job_done_nr++;
@@ -431,39 +394,29 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task, const int worker_id, con
         }
     }
 
-    // try to get the file content
-    std::vector<std::vector<std::string>>  file_content_list(task_number);
-    std::vector<int> empty_lines_list(task_number, 0);
-    i = 0;
-    for (auto &content: content_list) {
-        ret = content->do_file_content(file_path, &file_content_list[i], &empty_lines_list[i]);
-        LOG_CHECK_ERR(ret);
-        job_has_done[i] = false;
-        i++;
-    }
+    LOG(DC_COMMON_LOG_INFO, "[main] all job has done, job_done_nr:%d", job_done_nr);
 
-    job_done_nr = 0;
-    while (job_done_nr < task_number) {
-        i = -1;
-        for (auto &content: content_list) {
-            i++;
-            if (job_has_done[i]) {
-                continue;
-            }
+    DC_COMMON_ASSERT(compare_result != nullptr);
+    DC_COMMON_ASSERT(compare_result->r_dir_path.length() > 0);
+    DC_COMMON_ASSERT(compare_result->r_filename_no_dir_path.length() > 0);
 
-            dc_common_code_t ret = content->get_file_content();
-            if (ret == E_DC_CONTENT_RETRY) {
-                continue;
-            }
+    // compare the sha1 list
+    for (int i = 0; i < task_number; i++) {
+        if (i == std_idx) {
+            continue;
+        }
 
-            if (ret == S_SUCCESS) {
-                job_has_done[i] = true;
-                job_done_nr++;
-            } else {
-                job_has_done[i] = true;
-                LOG_CHECK_ERR(ret);
-                job_done_nr++;
-            }
+        // 如果文件的属性不一样!
+        const int attr_compare_result = memcmp(&file_attr_list[i], &file_attr_list[std_idx], sizeof(dc_file_attr_t));
+        if (attr_compare_result != 0) {
+            compare_result->r_server_diff_arr.emplace_back();
+            auto &single_server_diff = compare_result->r_server_diff_arr.back();
+            single_server_diff.d_center_name = task->t_server_info_arr[i].c_center;
+            single_server_diff.d_file_size = file_attr_list[i].f_size;
+            single_server_diff.d_owner = file_attr_list[i].f_owner;
+            //single_server_diff.d_last_updated_time = file_attr_list[i].f_last_updated;
+            //single_server_diff.d_file_mode = file_attr_list[i].f_mode;
+            single_server_diff.d_is_diff = true;
         }
     }
 
@@ -471,7 +424,7 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task, const int worker_id, con
         delete content;
     }
 
-    task->t_task_status = T_TASK_OVER;
+    content_list.clear();
 
     return ret;
 }
@@ -504,14 +457,32 @@ dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task, const int worker_id, cons
                 LOG_CHECK_ERR_RETURN(ret);
             } else {
                 std::string new_path = std::string(dir_path) + "/" + std::string(dir->d_name);
-                ret = exe_sql_job_for_file(task, worker_id, new_path.c_str());
+
+                dc_api_task_single_file_compare_result_t single_fs_result;
+                single_fs_result.r_dir_path = dir_path;
+                single_fs_result.r_filename_no_dir_path = dir->d_name;
+
+                // use stat to check new_path is a file?
+                struct stat st;
+                if(stat(new_path.c_str(), &st) == -1) {
+                    LOG_ROOT_ERR(E_OS_ENV_STAT, "stat %s failed", new_path.c_str());
+                    return E_OS_ENV_STAT;
+                }
+
+                if (!S_ISREG(st.st_mode)) {
+                    continue;
+                }
+
+                ret = exe_sql_job_for_file(task, worker_id, new_path.c_str(), &single_fs_result);
                 LOG_CHECK_ERR_RETURN(ret);
+
+                if (single_fs_result.r_server_diff_arr.size() > 0) {
+                    task->t_fs_result.push_back(single_fs_result);
+                }
             }
         }
         closedir(d);
     }
-
-    // TODO 比标准方多出来的文件如何处理？
 
     return S_SUCCESS;
 }
@@ -540,9 +511,35 @@ dc_compare_t::exe_sql_job(dc_api_task_t *task, const int worker_id)
         return E_DC_COMPARE_EXE_TASK_FAILED;
     }
 
+    LOG(DC_COMMON_LOG_INFO, "[main] begin to execute task:%s", task->t_task_uuid.c_str());
+
     if (S_ISREG(file_stat.st_mode)) {
+        // get dirname of file path
+        std::string dir_name = compare_file_path;
+        size_t pos = dir_name.find_last_of('/');
+        if (pos != std::string::npos) {
+            dir_name = dir_name.substr(0, pos);
+        } else {
+            dir_name = ".";
+        }
+
+        // get filename of file path
+        std::string file_name = compare_file_path;
+        pos = file_name.find_last_of('/');
+        if (pos != std::string::npos) {
+            file_name = file_name.substr(pos + 1);
+        }
+
         // 如果是文件，那么就直接比较
-        ret = exe_sql_job_for_file(task, worker_id, compare_file_path.c_str());
+        dc_api_task_single_file_compare_result_t single_fs_result;
+        single_fs_result.r_dir_path = dir_name;
+        single_fs_result.r_filename_no_dir_path = file_name;
+
+        ret = exe_sql_job_for_file(task, worker_id, compare_file_path.c_str(), &single_fs_result);
+
+        if (single_fs_result.r_server_diff_arr.size() > 0) {
+            task->t_fs_result.push_back(single_fs_result);
+        }
     } else if (S_ISDIR(file_stat.st_mode)) {
         // 如果是目录，那么就需要一个文件一个文件地比，并且生成相应的结果
         ret = exe_sql_job_for_dir(task, worker_id, compare_file_path.c_str());
@@ -552,6 +549,11 @@ dc_compare_t::exe_sql_job(dc_api_task_t *task, const int worker_id)
                      compare_file_path.c_str());
         return E_DC_COMPARE_EXE_TASK_FAILED;
     }
+
+    // generate result
+    build_compare_result_json(task);
+
+    task->t_task_status = T_TASK_OVER;
 
     return ret;
 }
@@ -592,27 +594,6 @@ dc_compare_t::pop_one_task(const int worker_id) {
     return task;
 }
 
-dc_common_code_t
-dc_compare_t::try_free_content_list(int worker_id) {
-    dc_common_code_t ret = S_SUCCESS;
-
-    std::vector<std::list<dc_content_t*>::iterator> to_delete_list;
-
-    // iterate the task_content_list_ of worker_id
-    auto &content_list = task_content_list_[worker_id];
-    for (auto iter = content_list.begin(); iter != content_list.end(); iter++) {
-        auto &content = *iter;
-        delete content;
-        to_delete_list.push_back(iter);
-    }
-
-    for (auto &iter: to_delete_list) {
-        content_list.erase(iter);
-    }
-
-    return ret;
-}
-
 dc_common_code_t dc_compare_t::execute(const int worker_id) {
     dc_common_code_t ret;
 
@@ -632,16 +613,9 @@ dc_common_code_t dc_compare_t::execute(const int worker_id) {
             dc_diff_failed_content_t diff { task };
             diff.gen_diff(task);
         }
-
-        try_free_content_list(worker_id);
-
     } // end while
 
     LOG(DC_COMMON_LOG_INFO, "main worker:%d is over", worker_id);
-
-    while (task_content_list_[worker_id].size() > 0) {
-        try_free_content_list(worker_id);
-    }
 
     return S_SUCCESS;
 }

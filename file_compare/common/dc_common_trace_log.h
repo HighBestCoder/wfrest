@@ -67,7 +67,8 @@ dc_common_trace_log(const char* file_name,
     do {                                                    \
     if (S_SUCCESS                    != ret &&              \
         E_DC_CONTENT_RETRY           != ret &&              \
-        E_DC_CONTENT_OVER            != ret ) {             \
+        E_DC_CONTENT_OVER            != ret &&              \
+        E_DC_TASK_MEM_VOPS_NOT_OVER  != ret ) {             \
         LOG(DC_COMMON_LOG_ERROR, "\t at");                  \
         return ret;                                         \
     }                                                       \

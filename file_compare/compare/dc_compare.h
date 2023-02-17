@@ -36,16 +36,18 @@ class dc_compare_t {
   dc_api_task_t *pop_one_task(const int worker_id);
 
   // 文件比较函数
-  dc_common_code_t exe_sql_job_for_file(dc_api_task_t *task, const int worker_id, const char *file_path);
+  dc_common_code_t exe_sql_job_for_file(dc_api_task_t *task,
+                                        const int worker_id,
+                                        const char *file_path,
+                                        dc_api_task_single_file_compare_result_t *result /*OUT*/);
 
   // 目录比较函数
-  dc_common_code_t exe_sql_job_for_dir(dc_api_task_t *task, const int worker_id, const char *dir_path);
+  dc_common_code_t exe_sql_job_for_dir(dc_api_task_t *task,
+                                       const int worker_id,
+                                       const char *dir_path);
 
   // 线程函数：执行一个任务
   dc_common_code_t exe_sql_job(dc_api_task_t *task, const int worker_id);
-
-  // 线程函数：尝试free content_list
-  dc_common_code_t try_free_content_list(int worker_id);
 
  private:
   std::atomic<bool> exit_;
@@ -77,7 +79,7 @@ class dc_compare_t {
   std::vector<std::condition_variable> task_cond_list_;
   std::vector<std::list<dc_api_task_t *>> task_list_;
   std::vector<std::unordered_map<std::string, dc_api_task_t*>> task_status_list_;
-  std::vector<std::list<dc_content_t *>> task_content_list_;
+  std::vector<std::vector<dc_content_t *>> task_content_list_;
 };
 
 #endif /* ! _DC_COMPARE_H_ */
