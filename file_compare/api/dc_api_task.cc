@@ -286,8 +286,16 @@ build_task_from_json(const char *task_content,
     task->t_std_idx = -1;
     for (size_t i = 0; i < task->t_server_info_arr.size(); i++) {
         if (task->t_server_info_arr[i].c_standard) {
+            if (task->t_std_idx != -1) {
+                LOG_ROOT_ERR(E_ARG_INVALID,
+                             "task:%s has more than one standard server, task_content:%.*s"
+                             ,
+                             task->t_task_uuid.c_str(),
+                             task_content_len,
+                             task_content);
+                return E_ARG_INVALID;
+            }
             task->t_std_idx = i;
-            break;
         }
     }
 

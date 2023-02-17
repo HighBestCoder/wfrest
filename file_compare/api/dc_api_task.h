@@ -42,6 +42,7 @@ enum {
 // 单个文件在单个server上，与std的差异信息
 typedef struct dc_api_task_file_compare_result_server_diff {
     std::string d_center_name;
+    std::string d_file_name; // 这个数据中的文件名
     int64_t d_file_size; // -1 no exist;
     std::string d_permission;
     std::string d_owner;

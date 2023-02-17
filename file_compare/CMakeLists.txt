@@ -82,7 +82,7 @@ add_executable(test_client
 target_link_libraries(test_client ${SYS_LIB} ${WFREST_LIB})
 
 add_executable(test_local
-./test.cc
+./test_local.cc
 ${SRC}
 )
 target_link_libraries(test_local ${SYS_LIB} ${WFREST_LIB})

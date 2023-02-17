@@ -15,6 +15,7 @@
 
 static char                             task_json_str[1048576];                 /* 目前task.json最大1MB*/
 
+#define WRITE_TO_FILE
 #ifdef WRITE_TO_FILE
 static char                             task_result[RESULT_BUF];                  /* 目前最多16MB        */
 #endif
@@ -187,20 +188,23 @@ main(int argc, char **argv)
         break; /* 获取任务执行结果成功 */
     }
 
-    /*
     error = dc_api_task_cancel(compare_idx,
                                task_uuid,
                                strnlen(task_uuid, PATH_MAX));
     if (error) {
         printf("dc_api_ctx_task_cancel error no %d\n", error);
         return -1;
-    }*/
+    }
 
     error = dc_api_ctx_destroy(&compare_idx);
     if (error) {
         printf("dc_api_ctx_destroy error no %d\n", error);
         return -1;
     }
+
+#ifdef WRITE_TO_FILE
+    main_write_result_to_file("result.json", task_result, task_result_bytes);
+#endif
 
     printf("[DEBUG] over at %s(%s:%d)\n", __FUNCTION__, __FILE__, __LINE__);
 

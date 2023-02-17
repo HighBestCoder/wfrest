@@ -75,7 +75,7 @@ dc_api_ctx_default_t::task_add(const char *task_content,
     // free root
     cJSON_Delete(root);
 
-    return S_SUCCESS;
+    return ret;
 }
 
 dc_common_code_t dc_api_ctx_default_t::task_start(const char *task_uuid, uint32_t task_uuid_len)

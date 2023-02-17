@@ -414,8 +414,17 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
             single_server_diff.d_center_name = task->t_server_info_arr[i].c_center;
             single_server_diff.d_file_size = file_attr_list[i].f_size;
             single_server_diff.d_owner = file_attr_list[i].f_owner;
-            //single_server_diff.d_last_updated_time = file_attr_list[i].f_last_updated;
-            //single_server_diff.d_file_mode = file_attr_list[i].f_mode;
+
+            // conver f_last_updated to string
+            char time_str[64] = {0};
+            struct tm *tm = localtime(&file_attr_list[i].f_last_updated);
+            strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm);
+            single_server_diff.d_last_updated_time = time_str;
+
+            // convert f_mode to string
+            char mode_str[16] = {0};
+            sprintf(mode_str, "%o", file_attr_list[i].f_mode);
+            single_server_diff.d_file_mode = mode_str;
             single_server_diff.d_is_diff = true;
         }
     }
