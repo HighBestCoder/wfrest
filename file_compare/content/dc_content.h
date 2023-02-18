@@ -5,6 +5,7 @@
 #include "dc_common_error.h"            // dc_error_t
 #include "chan.h"                       // 消息通道!
 
+#include <openssl/md5.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
@@ -137,6 +138,7 @@ private:
     dc_file_attr_t *file_attr_ { nullptr };
     std::vector<std::string> *lines_sha1_ { nullptr };
     int *empty_lines_ { nullptr };
+    unsigned char md5_[MD5_DIGEST_LENGTH];
 };
 
 class dc_content_remote_t : public dc_content_t {

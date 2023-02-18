@@ -25,6 +25,8 @@ dc_content_local_t::dc_content_local_t(dc_api_ctx_default_server_info_t *server)
     // 创建一个线程去处理命令
     worker_ = new std::thread(&dc_content_local_t::thd_worker, this);
     DC_COMMON_ASSERT(worker_ != nullptr);
+
+    memset(md5_, 0, sizeof(md5_));
 }
 
 dc_content_local_t::~dc_content_local_t() {
@@ -441,6 +443,9 @@ dc_content_local_t::thd_worker_file_content_read(void)
                      strerror(errno));
         return E_OS_ENV_READ;
     }
+
+    // update md5 value of md5_buf
+    MD5((unsigned char*)input.c_str(), input.size(), result);
 
     if (read_len == 0) {
         // we have read all the file content
