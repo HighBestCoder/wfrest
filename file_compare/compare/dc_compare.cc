@@ -6,8 +6,6 @@
 #include "dc_diff_failed_content.h"
 #include "dc_common_trace_log.h"
 
-#include "workflow/WFTaskFactory.h"
-
 #include <stdlib.h>
 #include <string.h>
 #include <vector>
