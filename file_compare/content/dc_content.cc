@@ -445,7 +445,7 @@ dc_content_local_t::thd_worker_file_content_read(void)
     }
 
     // update md5 value of md5_buf
-    MD5((unsigned char*)input.c_str(), input.size(), result);
+    MD5(file_read_buf_, read_len, md5_);
 
     if (read_len == 0) {
         // we have read all the file content
@@ -454,9 +454,8 @@ dc_content_local_t::thd_worker_file_content_read(void)
             // because the pre_line may not be empty
             // and we need to compute the sha1 of the
             // pre_line and the current line
-            // and then clear the pre_line.
-            // so we need to copy the current line to
-            // the pre_line
+            // and then clear the pre_line. So we need to
+            // copy the current line to the pre_line.
             if (thd_worker_check_is_empty_line((const uint8_t*)file_pre_line_.c_str(), file_pre_line_.length())) {
                 (*empty_lines_)++;
             } else {

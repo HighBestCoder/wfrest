@@ -92,9 +92,3 @@ test_file_sha1.cc
 ${SRC}
 )
 target_link_libraries(test_file_sha1 ${SYS_LIB} ${WFREST_LIB})
-
-add_executable(test_cjson_mem
-test_cjson_mem.cc
-${SRC}
-)
-target_link_libraries(test_cjson_mem ${SYS_LIB} ${WFREST_LIB})
