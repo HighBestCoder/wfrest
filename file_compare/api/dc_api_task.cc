@@ -155,15 +155,30 @@ build_task_server_info(cJSON *server_item,
 dc_common_code_t
 build_task_from_json(const char *task_content,
                      const uint32_t task_content_len,
-                     cJSON *root,
                      dc_api_task_t *task/*已经生成内存*/)
 {
     char msg_buf[4096];
+    cJSON *root = NULL;
 
     DC_COMMON_ASSERT(task_content != NULL);
     DC_COMMON_ASSERT(task_content_len > 0);
-    DC_COMMON_ASSERT(root != NULL);
     DC_COMMON_ASSERT(task != NULL);
+
+    root = cJSON_Parse(task_content);
+    if (root == NULL) {
+        snprintf(msg_buf, sizeof(msg_buf),
+                 "task_content:%.*s is not a valid json string",
+                 task_content_len, task_content);
+        LOG_ROOT_ERR(E_ARG_INVALID, msg_buf);
+        task->t_error = E_ARG_INVALID;
+        task->t_error_msg = msg_buf;
+        return E_ARG_INVALID;
+    }
+
+     // use shared ptr to defer release root
+     std::shared_ptr<void> root_ptr(root, [](void *p) {
+         cJSON_Delete((cJSON *)p);
+     });
 
 #define HANDLE_ERROR_MSG(emsg, ...)           do {          \
         snprintf(msg_buf, sizeof(msg_buf), __VA_ARGS__);    \

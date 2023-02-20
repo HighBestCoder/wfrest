@@ -2,7 +2,8 @@
 #include "wfrest/HttpServer.h"
 #include "wfrest/json.hpp"
 
-#include "dc_api.h"
+#include "dc_api_task.h"
+#include "dc_compare.h"
 #include "dc_common_trace_log.h"
 
 #include <csignal>
@@ -18,30 +19,17 @@ void sig_handler(int signo)
 
 int main()
 {
-    dc_api_ctx_idx_t ctx_idx;
-    dc_common_code_t ret;
-
-    ret = dc_api_ctx_construct(&ctx_idx);
-    if (ret != S_SUCCESS) {
-        fprintf(stderr, "dc_api_ctx_construct failed\n");
-        return -1;
-    }
-
-    // use shared ptr as defer to release ctx
-    std::shared_ptr<void> defer(nullptr, [&ctx_idx](void *) {
-        dc_api_ctx_destroy(&ctx_idx);
-    });
-
     signal(SIGINT, sig_handler);
 
     HttpServer svr;
+    dc_compare_t compare_worker(4);
 
     // 1. You can `./13_compess_client` 
     // 2. or use python script `python3 13_compress_client.py`
     // 3.
     // echo '{"testgzip": "gzip compress data"}' | gzip | curl -v -i --data-binary @- -H "Content-Encoding: gzip" http://localhost:8888/task
     // echo '{"testgzip": "gzip compress data"}' | curl -v -i --data-binary @- http://localhost:8888/task
-    svr.POST("/task/{uuid}", [&ctx_idx](const HttpReq *req, HttpResp *resp) {
+    svr.POST("/task/{uuid}", [&compare_worker](const HttpReq *req, HttpResp *resp) {
         // We automatically decompress the compressed data sent from the client
         // Support gzip, br only now
         // server: 这里设置压缩，注意，已经在header里面添加了相应的信息!
@@ -77,24 +65,41 @@ int main()
 
         LOG(DC_COMMON_LOG_INFO, "task:%s body:%s", uuid.c_str(), body.c_str());
 
-        dc_common_code_t ret = dc_api_task_add(ctx_idx,
-                                               body.data(),
-                                               body.size(),
-                                               DC_CONFIG_TYPE_JSON);
+        dc_api_task_t *task = new dc_api_task_t();
+        DC_COMMON_ASSERT(task != nullptr);
+
+        auto ret = build_task_from_json(body.c_str(), body.size(), task);
         if (ret != S_SUCCESS) {
             Json json;
             json["uuid"] = uuid;
-            json["error"] = "dc_api_task_add failed: error:" + std::to_string((int)ret);
+            json["error"] = "build_task_from_json failed: error:" + std::to_string((int)ret);
             resp->Json(json);
             return;
         }
 
-        // try to start the task
-        ret = dc_api_task_start(ctx_idx, uuid.c_str(), uuid.size());
+        if (uuid != task->t_task_uuid) {
+            Json json;
+            json["uuid"] = uuid;
+            json["error"] = "uuid is not equal to task->t_task_uuid";
+            resp->Json(json);
+            return;
+        }
+
+        // put this task into compare_worker
+        ret = compare_worker.add(task);
         if (ret != S_SUCCESS) {
             Json json;
             json["uuid"] = uuid;
-            json["error"] = "dc_api_task_start failed: error:" + std::to_string((int)ret);
+            json["error"] = "compare_worker.add failed: error:" + std::to_string((int)ret);
+            resp->Json(json);
+            return;
+        }
+
+        ret = compare_worker.start(uuid);
+        if (ret != S_SUCCESS) {
+            Json json;
+            json["uuid"] = uuid;
+            json["error"] = "compare_worker.start failed: error:" + std::to_string((int)ret);
             resp->Json(json);
             return;
         }
@@ -102,10 +107,11 @@ int main()
         // 这里设置返回的内容!
         Json json;
         json["uuid"] = uuid;
+        json["msg"] = "put into queue, wait for schedule to run";
         resp->Json(json);
     });
 
-    svr.POST("/internal/task/{uuid}", [&ctx_idx](const HttpReq *req, HttpResp *resp) {
+    svr.POST("/internal/task/{uuid}", [&compare_worker](const HttpReq *req, HttpResp *resp) {
         // We automatically decompress the compressed data sent from the client
         // Support gzip, br only now
         // server: 这里设置压缩，注意，已经在header里面添加了相应的信息!
@@ -158,7 +164,7 @@ int main()
         resp->Json(json);
     });
 
-    svr.GET("/task/{uuid}", [&ctx_idx](const HttpReq *req, HttpResp *resp) {
+    svr.GET("/task/{uuid}", [&compare_worker](const HttpReq *req, HttpResp *resp) {
         const std::string& uuid = req->param("uuid");
 
         resp->set_compress(Compress::GZIP);
@@ -172,51 +178,27 @@ int main()
             return;
         }
 
-        int need_bytes = 0;
-        dc_common_code_t ret = dc_api_task_get_result(ctx_idx,
-                                                      uuid.c_str(),
-                                                      uuid.size(),
-                                                      DC_CONFIG_TYPE_JSON,
-                                                      0,
-                                                      0,
-                                                      &need_bytes);
-        if (ret == E_DC_CONTENT_RETRY || ret == E_DC_TASK_MEM_VOPS_NOT_OVER) {
-            Json json;
-            json["uuid"] = uuid;
-            json["error"] = "retry";
-            resp->Json(json);
+        Json result_json;
+        auto ret = compare_worker.result(uuid, result_json);
+        if (ret == S_SUCCESS) {
+            ret = compare_worker.cancel(uuid);
+            DC_COMMON_ASSERT(ret == S_SUCCESS);
+            resp->Json(result_json);
             return;
         }
 
-        if (ret != S_SUCCESS) {
-            Json json;
-            json["uuid"] = uuid;
-            json["error"] = "dc_api_task_get_result failed: error:" + std::to_string((int)ret);
-            resp->Json(json);
+        if (ret == E_DC_TASK_MEM_VOPS_NOT_OVER) {
+            result_json["uuid"] = uuid;
+            result_json["errno"] = (int)ret;
+            result_json["error"] = "task still running...";
+            resp->Json(result_json);
             return;
         }
 
-        std::string result;
-        result.resize(need_bytes, 0);
-        ret = dc_api_task_get_result(ctx_idx,
-                                     uuid.c_str(),
-                                     uuid.size(),
-                                     DC_CONFIG_TYPE_JSON,
-                                     (char*)result.data(),
-                                     need_bytes,
-                                     &need_bytes);
-        if (ret != S_SUCCESS) {
-            Json json;
-            json["uuid"] = uuid;
-            json["error"] = "dc_api_task_get_result2 failed: error:" + std::to_string((int)ret);
-            resp->Json(json);
-            return;
-        }
-
-        LOG(DC_COMMON_LOG_INFO, "task:%s result:%s", uuid.c_str(), result.c_str());
-
-        Json json(result);
-        resp->Json(json);
+        result_json["uuid"] = uuid;
+        result_json["errno"] = (int)ret;
+        result_json["error"] = "compare_worker.result failed: error:" + std::to_string((int)ret);
+        resp->Json(result_json);
     });
 
     if (svr.start(8888) == 0) {

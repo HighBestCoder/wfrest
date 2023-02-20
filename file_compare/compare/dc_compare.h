@@ -6,6 +6,10 @@
 #include "dc_diff.h"
 #include "dc_content.h"
 
+#include "workflow/WFFacilities.h"
+#include "wfrest/HttpServer.h"
+#include "wfrest/json.hpp"
+
 #include <atomic>
 #include <condition_variable>
 #include <list>
@@ -22,9 +26,7 @@ class dc_compare_t {
   dc_common_code_t start(std::string task_uuid);
   dc_common_code_t cancel(std::string task_uuid);
   dc_common_code_t result(std::string task_uuid,
-                          char *task_out_buf,
-                          const uint32_t task_out_buf_len,
-                          int *result_bytes);
+                          wfrest::Json &result_json /*OUT*/);
  private:
   // 检查任务是否失败了!
   dc_common_code_t check_task_is_failed(dc_api_task_t* &task);

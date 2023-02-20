@@ -58,15 +58,12 @@ typedef struct dc_api_task {
     uint64_t t_printed_bytes;                               // 已经输出的字节数
     uint64_t t_printed_diff_rows;                           // 已经输出的不同行数
     uint64_t t_sql_error_nr;                                // 文件读取错误的次数
-
-    // TODO 如果比较的是目录，那么返回值可能很大，这里需要考虑怎么处理
-    std::vector<wfrest::Json>  t_fs_result; // 每个文件的比较结果
+    wfrest::Json t_compare_result_json;                     // 比较结果的json
 } dc_api_task_t;
 
 dc_common_code_t
 build_task_from_json(const char *task_content,
                      const uint32_t task_content_len,
-                     cJSON *root,
                      dc_api_task_t *task/*已经生成内存*/);
 
 dc_common_code_t

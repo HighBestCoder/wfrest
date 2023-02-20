@@ -17,6 +17,20 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+std::pair<std::string, std::string>
+get_base_and_file_name(std::string &compare_file_path)
+{
+    size_t pos = compare_file_path.find_last_of('/');
+
+    std::string dir_name = pos != std::string::npos ?
+                           compare_file_path.substr(0, pos) : ".";
+
+    std::string file_name = pos == std::string::npos ?
+                            file_name : file_name.substr(pos + 1);
+
+    return std::make_pair(dir_name, file_name);
+}
+
 dc_compare_t::dc_compare_t(const uint32_t thd_nr)
     : task_mutex_list_(thd_nr),
       task_cond_list_(thd_nr),
@@ -174,12 +188,10 @@ dc_compare_t::cancel(std::string task_uuid) {
 
 dc_common_code_t
 dc_compare_t::result(std::string task_uuid,
-                     char *task_out_buf /*nullable */,
-                     const uint32_t task_out_buf_len /* can be 0*/,
-                     int *result_bytes) {
+                     wfrest::Json &result_json)
+{
     DC_COMMON_ASSERT(!task_uuid.empty());
     DC_COMMON_ASSERT(thd_list_.size() > 0);
-    DC_COMMON_ASSERT(result_bytes != nullptr);
 
     // find task in task_status_list_
     // hash task->t_task_uuid and get worker_id
@@ -189,11 +201,11 @@ dc_compare_t::result(std::string task_uuid,
     // 看一下是不是已经不存在了
     auto iter = task_status_list_[worker_id].find(task_uuid);
     if (iter == task_status_list_[worker_id].end()) {
-        LOG_ROOT_ERR(E_ARG_INVALID,
+        LOG_ROOT_ERR(E_OS_ENV_NOT_FOUND,
                      "task:%s not exist in worker:%d",
                      task_uuid.c_str(),
                      worker_id);
-        return E_ARG_INVALID;
+        return E_OS_ENV_NOT_FOUND;
     }
 
     auto task = iter->second;
@@ -202,14 +214,7 @@ dc_compare_t::result(std::string task_uuid,
             "task:%s is over, begin to work on get result",
             task->t_task_uuid.c_str());
 
-        if (task_out_buf_len < task->t_compare_result.length() || task_out_buf == nullptr) {
-            *result_bytes = task->t_compare_result.length();
-            return S_SUCCESS;
-        }
-
-        // copy result to task_out_buf
-        memcpy(task_out_buf, task->t_compare_result.c_str(), task->t_compare_result.length());
-        *result_bytes = task->t_compare_result.length();
+        result_json.swap(task->t_compare_result_json);
 
         return S_SUCCESS;
     }
@@ -393,18 +398,7 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
     }
 
     LOG(DC_COMMON_LOG_INFO, "[main] all job has done, job_done_nr:%d", job_done_nr);
-
-    wfrest::Json single_file_result_json;
-    auto pos = file_path.find_last_of('/');
-    if (pos != std::string::npos) {
-        single_file_result_json["dir"] = file_path.substr(0, pos);
-        single_file_result_json["name"] = file_path.substr(pos + 1);
-    } else {
-        single_file_result_json["dir"] = ".";
-        single_file_result_json["name"] = file_path;
-    }
-
-    single_file_result_json["servers"] = wfrest::Json::array();
+    single_file_compare_result_json["servers"] = wfrest::Json::array();
 
     // compare the sha1 list
     for (int i = 0; i < task_number; i++) {
@@ -473,6 +467,13 @@ dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task, const int worker_id, cons
     // 对于每个文件，都要执行一次exe_sql_job_for_file
     // 对于每个文件，都要执行一次exe_sql_job_for_dir
     // linux scan dir
+
+    task->t_compare_result_json["diffs"].emplace_back();
+    wfrest::Json &dir_json = task->t_compare_result_json["diffs"].back();
+    dir_json["name"] = dir_path;
+    ret = exe_sql_job_for_file(task, worker_id, dir_path, dir_json);
+    LOG_CHECK_ERR_RETURN(ret);
+
     DIR *d;
     struct dirent *dir;
     d = opendir(dir_path);
@@ -488,9 +489,10 @@ dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task, const int worker_id, cons
             } else {
                 std::string new_path = std::string(dir_path) + "/" + std::string(dir->d_name);
 
-                dc_api_task_single_file_compare_result_t single_fs_result;
-                single_fs_result.r_dir_path = dir_path;
-                single_fs_result.r_filename_no_dir_path = dir->d_name;
+                task->t_compare_result_json["diffs"].emplace_back();
+                wfrest::Json &single_file_compare_result_json = task->t_compare_result_json["diffs"].back();
+                single_file_compare_result_json["name"] = dir->d_name;
+                single_file_compare_result_json["dir"] = dir_path;
 
                 // use stat to check new_path is a file?
                 struct stat st;
@@ -503,12 +505,11 @@ dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task, const int worker_id, cons
                     continue;
                 }
 
-                ret = exe_sql_job_for_file(task, worker_id, new_path.c_str(), &single_fs_result);
+                ret = exe_sql_job_for_file(task,
+                                           worker_id,
+                                           new_path.c_str(),
+                                           single_file_compare_result_json);
                 LOG_CHECK_ERR_RETURN(ret);
-
-                if (single_fs_result.r_server_diff_arr.size() > 0) {
-                    task->t_fs_result.push_back(single_fs_result);
-                }
             }
         }
         closedir(d);
@@ -543,33 +544,16 @@ dc_compare_t::exe_sql_job(dc_api_task_t *task, const int worker_id)
 
     LOG(DC_COMMON_LOG_INFO, "[main] begin to execute task:%s", task->t_task_uuid.c_str());
 
+    task->t_compare_result_json["id"] = task->t_task_uuid;
+    task->t_compare_result_json["next_shard"] = -1;
+    task->t_compare_result_json["diffs"] = wfrest::Json::array();
+
     if (S_ISREG(file_stat.st_mode)) {
-        // get dirname of file path
-        std::string dir_name = compare_file_path;
-        size_t pos = dir_name.find_last_of('/');
-        if (pos != std::string::npos) {
-            dir_name = dir_name.substr(0, pos);
-        } else {
-            dir_name = ".";
-        }
-
-        // get filename of file path
-        std::string file_name = compare_file_path;
-        pos = file_name.find_last_of('/');
-        if (pos != std::string::npos) {
-            file_name = file_name.substr(pos + 1);
-        }
-
-        // 如果是文件，那么就直接比较
-        dc_api_task_single_file_compare_result_t single_fs_result;
-        single_fs_result.r_dir_path = dir_name;
-        single_fs_result.r_filename_no_dir_path = file_name;
-
-        ret = exe_sql_job_for_file(task, worker_id, compare_file_path.c_str(), &single_fs_result);
-
-        if (single_fs_result.r_server_diff_arr.size() > 0) {
-            task->t_fs_result.push_back(single_fs_result);
-        }
+        task->t_compare_result_json["diffs"].emplace_back();
+        ret = exe_sql_job_for_file(task, worker_id,
+                                   compare_file_path.c_str(),
+                                   task->t_compare_result_json["diffs"].back());
+        LOG_CHECK_ERR_RETURN(ret);
     } else if (S_ISDIR(file_stat.st_mode)) {
         // 如果是目录，那么就需要一个文件一个文件地比，并且生成相应的结果
         ret = exe_sql_job_for_dir(task, worker_id, compare_file_path.c_str());

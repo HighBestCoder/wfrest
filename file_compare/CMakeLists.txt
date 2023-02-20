@@ -63,8 +63,6 @@ set(SRC
 ./common/dc_common_log.cc
 ./common/cJSON.cc
 ./compare/dc_compare.cc
-./api/dc_api_ctx_default.cc
-./api/dc_api.cc
 ./api/dc_api_task.cc
 ./content/dc_content.cc
 ./diff/dc_diff.cc
@@ -82,12 +80,6 @@ add_executable(test_client
     ./test_client.cc
 )
 target_link_libraries(test_client ${SYS_LIB} ${WFREST_LIB})
-
-add_executable(test_local
-./test_local.cc
-${SRC}
-)
-target_link_libraries(test_local ${SYS_LIB} ${WFREST_LIB})
 
 add_executable(test_file_sha1
 test_file_sha1.cc
