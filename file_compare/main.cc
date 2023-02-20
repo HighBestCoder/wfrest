@@ -105,6 +105,48 @@ int main()
         resp->Json(json);
     });
 
+    svr.POST("/internal/task/{uuid}", [&ctx_idx](const HttpReq *req, HttpResp *resp) {
+        // We automatically decompress the compressed data sent from the client
+        // Support gzip, br only now
+        // server: 这里设置压缩，注意，已经在header里面添加了相应的信息!
+        resp->set_compress(Compress::GZIP);
+        resp->add_header_pair("Content-Type", "application/json");
+
+        const std::string& uuid = req->param("uuid");
+        if (uuid.empty()) {
+            Json json;
+            json["error"] = "uuid is empty";
+            json["uuid"] = uuid;
+            resp->Json(json);
+            return;
+        }
+
+        if (req->content_type() != APPLICATION_JSON) {
+            Json json;
+            json["error"] = "content type is not json";
+            json["content_type"] = req->content_type();
+            json["uuid"] = uuid;
+            resp->Json(json);
+            return;
+        }
+
+        auto &body = req->body();
+        if (body.empty()) {
+            Json json;
+            json["error"] = "body is empty";
+            json["uuid"] = uuid;
+            resp->Json(json);
+            return;
+        }
+
+        LOG(DC_COMMON_LOG_INFO, "task:%s body:%s", uuid.c_str(), body.c_str());
+        // run internal task
+
+        Json json;
+        json["uuid"] = uuid;
+        resp->Json(json);
+    });
+
     svr.GET("/task/{uuid}", [&ctx_idx](const HttpReq *req, HttpResp *resp) {
         const std::string& uuid = req->param("uuid");
 
