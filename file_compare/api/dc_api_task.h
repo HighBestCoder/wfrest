@@ -4,7 +4,9 @@
 #include "dc_common_error.h"
 #include "cJSON.h"
 
-#include "wfrest/wfrest_json.h"
+#include "workflow/WFFacilities.h"
+#include "wfrest/HttpServer.h"
+#include "wfrest/json.hpp"
 
 #include <string>
 #include <vector>
@@ -41,12 +43,6 @@ enum {
     FC_TASK_RESULT_INVALID,
 };
 
-typedef struct dc_api_task_single_file_compare_result {
-    std::string r_filename_no_dir_path;
-    std::string r_dir_path;
-    std::vector<wfrest::Json> r_server_diff_arr;
-} dc_api_task_single_file_compare_result_t;
-
 typedef struct dc_api_task {
     // input part
     std::string t_task_uuid;                                // 任务的uuid
@@ -64,8 +60,7 @@ typedef struct dc_api_task {
     uint64_t t_sql_error_nr;                                // 文件读取错误的次数
 
     // TODO 如果比较的是目录，那么返回值可能很大，这里需要考虑怎么处理
-    std::string t_compare_result;                           // 比较结果
-    std::vector<dc_api_task_single_file_compare_result_t>  t_fs_result; // 每个文件的比较结果
+    std::vector<wfrest::Json>  t_fs_result; // 每个文件的比较结果
 } dc_api_task_t;
 
 dc_common_code_t

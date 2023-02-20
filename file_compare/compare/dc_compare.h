@@ -39,7 +39,7 @@ class dc_compare_t {
   dc_common_code_t exe_sql_job_for_file(dc_api_task_t *task,
                                         const int worker_id,
                                         const char *file_path,
-                                        dc_api_task_single_file_compare_result_t *result /*OUT*/);
+                                        wfrest::Json &single_file_compare_result_json /*OUT*/);
 
   // 目录比较函数
   dc_common_code_t exe_sql_job_for_dir(dc_api_task_t *task,

@@ -327,7 +327,7 @@ dc_common_code_t
 dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
                                    const int worker_id,
                                    const char *c_file_path,
-                                   dc_api_task_single_file_compare_result_t *compare_result/*CHANGED*/)
+                                   wfrest::Json &single_file_compare_result_json/*CHANGED*/)
 {
     dc_common_code_t ret = S_SUCCESS;
 
@@ -394,34 +394,58 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
 
     LOG(DC_COMMON_LOG_INFO, "[main] all job has done, job_done_nr:%d", job_done_nr);
 
-    DC_COMMON_ASSERT(compare_result != nullptr);
-    DC_COMMON_ASSERT(compare_result->r_dir_path.length() > 0);
-    DC_COMMON_ASSERT(compare_result->r_filename_no_dir_path.length() > 0);
+    wfrest::Json single_file_result_json;
+    auto pos = file_path.find_last_of('/');
+    if (pos != std::string::npos) {
+        single_file_result_json["dir"] = file_path.substr(0, pos);
+        single_file_result_json["name"] = file_path.substr(pos + 1);
+    } else {
+        single_file_result_json["dir"] = ".";
+        single_file_result_json["name"] = file_path;
+    }
+
+    single_file_result_json["servers"] = wfrest::Json::array();
 
     // compare the sha1 list
     for (int i = 0; i < task_number; i++) {
         if (i == std_idx) {
+            wfrest::Json std_server_file_info;
+            std_server_file_info["server_name"] = task->t_server_info_arr[i].c_center;
+            std_server_file_info["size"] = file_attr_list[i].f_size;
+            std_server_file_info["owner"] = file_attr_list[i].f_owner;
+            std_server_file_info["last_updated"] = file_attr_list[i].f_last_updated;
+            std_server_file_info["mode"] = file_attr_list[i].f_mode;
+            std_server_file_info["md5"] = file_attr_list[i].f_md5;
+            std_server_file_info["is_standard"] = true;
+
+            single_file_compare_result_json["servers"].push_back(std_server_file_info);
         } else {
-            // 如果文件的属性不一样!
-            const int attr_compare_result = memcmp(&file_attr_list[i], &file_attr_list[std_idx], sizeof(dc_file_attr_t));
-            if (attr_compare_result != 0) {
-                compare_result->r_server_diff_arr.emplace_back();
-                auto &single_server_diff = compare_result->r_server_diff_arr.back();
-                single_server_diff.d_center_name = task->t_server_info_arr[i].c_center;
-                single_server_diff.d_file_size = file_attr_list[i].f_size;
-                single_server_diff.d_owner = file_attr_list[i].f_owner;
-
-                // conver f_last_updated to string
-                char time_str[64] = {0};
-                struct tm *tm = localtime(&file_attr_list[i].f_last_updated);
-                strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm);
-                single_server_diff.d_last_updated_time = time_str;
-
-                // convert f_mode to string
-                char mode_str[16] = {0};
-                sprintf(mode_str, "%o", file_attr_list[i].f_mode);
-                single_server_diff.d_file_mode = mode_str;
-                single_server_diff.d_is_diff = true;
+            // compare the size, owner, last_updated, mode, md5
+            auto is_same = file_attr_list[std_idx].compare(file_attr_list[i]);
+            if (!is_same) {
+                wfrest::Json diff_server_info;
+                diff_server_info["server_name"] = task->t_server_info_arr[i].c_center;
+                // if f_size is not the same
+                if (file_attr_list[std_idx].f_size != file_attr_list[i].f_size) {
+                    diff_server_info["size"] = file_attr_list[i].f_size;
+                }
+                // if f_owner is not the same
+                if (file_attr_list[std_idx].f_owner != file_attr_list[i].f_owner) {
+                    diff_server_info["owner"] = file_attr_list[i].f_owner;
+                }
+                // if f_last_updated is not the same
+                if (file_attr_list[std_idx].f_last_updated != file_attr_list[i].f_last_updated) {
+                    diff_server_info["last_updated"] = file_attr_list[i].f_last_updated;
+                }
+                // if f_mode is not the same
+                if (file_attr_list[std_idx].f_mode != file_attr_list[i].f_mode) {
+                    diff_server_info["mode"] = file_attr_list[i].f_mode;
+                }
+                // if f_md5 is not the same
+                if (file_attr_list[std_idx].f_md5 != file_attr_list[i].f_md5) {
+                    diff_server_info["md5"] = file_attr_list[i].f_md5;
+                }
+                single_file_compare_result_json["servers"].push_back(diff_server_info);
             }
         }
     }

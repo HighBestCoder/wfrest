@@ -15,10 +15,19 @@
 #include <atomic>
 
 typedef struct dc_file_attr {
-    int64_t f_size;
-    mode_t f_mode;         // 文件的权限
-    std::string f_owner;   // 文件拥有者
-    time_t f_last_updated; // 文件最后更新时间
+    int64_t f_size;             // 文件大小
+    std::string f_mode;         // 文件的权限
+    std::string f_owner;        // 文件拥有者
+    std::string f_last_updated; // 文件最后更新时间
+    std::string f_md5;          // 文件的md5
+
+    bool compare(const dc_file_attr &f) const {
+        return (f_size == f.f_size &&
+                f_mode == f.f_mode &&
+                f_owner == f.f_owner &&
+                f_last_updated == f.f_last_updated &&
+                f_md5 == f.f_md5);
+    }
 } dc_file_attr_t;
 
 // 接口类

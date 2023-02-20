@@ -239,8 +239,10 @@ dc_content_local_t::thd_worker_file_attr()
     // get file size
     file_attr_->f_size = file_stat.st_size;
 
-    // get file mode
-    file_attr_->f_mode = file_stat.st_mode;
+    // get file mode, then convert st_mode to string
+    char mode_str[32] = {0};
+    snprintf(mode_str, sizeof(mode_str), "%o", file_stat.st_mode & 0777);
+    file_attr_->f_mode = mode_str;
 
     // get owner name by st_uid
     struct passwd *pwd = getpwuid(file_stat.st_uid);
@@ -256,8 +258,19 @@ dc_content_local_t::thd_worker_file_attr()
     file_attr_->f_owner = pwd->pw_name;
     LOG(DC_COMMON_LOG_INFO, "set owner of file:%s, owner:%s", file_path_.c_str(), file_attr_->f_owner.c_str());
 
-    // get file last updated time
-    file_attr_->f_last_updated = file_stat.st_mtime;
+    // get file last updated time, convert st_mtime to string
+    char time_str[32] = {0};
+    struct tm *tm = localtime(&file_stat.st_mtime);
+    if (tm == nullptr) {
+        LOG_ROOT_ERR(E_OS_ENV_NOT_FOUND,
+                     "localtime failed, errno=%d, errstr=%s",
+                     errno,
+                     strerror(errno));
+        return E_OS_ENV_NOT_FOUND;
+    }
+    // format tm to string
+    strftime(time_str, sizeof(time_str), "%Y%m%d%-H%M%S", tm);
+    file_attr_->f_last_updated = time_str;
 
     // set a memory barrier here
     std::atomic_thread_fence(std::memory_order_release);
