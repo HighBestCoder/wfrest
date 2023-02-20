@@ -1,119 +1,13 @@
-{
-    "id": "uuid-of-task",
-    "next_shard_id": "xxxx-shard_id",
-    "data": [
-        {
-            "dir": "./",
-            "dir_attr_list": [
-                {
-                    "server_name": "server1_host_name",
-                    "permission": "",
-                    "owner": "",
-                    "last_updated_time": "",
-                    "md5": "",
-                    "error_code": "",
-                    "error_message": ""
-                },
-                {
-                    "server_name": "server2_host_name",
-                    "permission": "",
-                    "owner": "",
-                    "last_updated_time": "",
-                    "md5": "",
-                    "error_code": "",
-                    "error_message": ""
-                },
-                {
-                    "server_name": "server2_host_name",
-                    "permission": "",
-                    "owner": "",
-                    "last_updated_time": "",
-                    "md5": "",
-                    "error_code": "",
-                    "error_message": ""
-                },
-            ],
-            
-        }
-    ]
-}
+我整理一下：
+1. 所有的目录 & 文件都要返回标准方的属性。并且文件都需要有md5值。
+2. 如果属性里面一样的，约定就不返回。
+3. 如果有出错，带上出错码/出错信息。
+4. 如果某个数据中心，与标准方的文件XX/目录XX属性/内容完全一样。那么不需要写XX在这个数据中心的属性。
+5. 带上任务信息。
+6. 比基准方多出来的文件也是需要显示在差异列表里面。
 
+文件属性：size，permission, owner, md5, errno, error_msg, diff_file_path,last_updated_time, comment.
 
+文件夹属性：是permission, owner和last_updated_time, errno, error_msg
 
-
-
-
-{
-    "id": "0b4e",
-    "data": [
-        {
-            "dir": "./",
-            "files": [
-                {
-                    "filename": "xxxx",
-                    "servers": [ //文件在某台服务器上的属性
-                        {
-                            "name": "drp0",
-                            "size": "490000",
-                            "permission": "",
-                            "owner": "",
-                            "last_updated_time": "",
-                            "md5": "",
-                            "comment": "",
-                            "diff_file_path": "差异文件完整路径",
-                            "error_code": "",
-                            "error_message": ""
-                        }
-                    ]
-                }
-            ],
-            "servers": [ //文件夹在某台服务器上的属性
-                {
-                    "name": "drp0",
-                    "size": "490000",
-                    "permission": "",
-                    "owner": "",
-                    "last_updated_time": "",
-                    "md5": "",
-                    "error_code": "",
-                    "error_message": ""
-                }
-            ]
-        },
-        {
-            "dir": "/aa",
-            "files": [
-                {
-                    "fileName": "xxxx",
-                    "servers": [
-                        {
-                            "name": "drp0",
-                            "size": "490000",
-                            "permission": "",
-                            "owner": "",
-                            "last_updated_time": "",
-                            "md5": "",
-                            "comment": "",
-                            "diff_result": "差异明细",
-                            "error_code": "",
-                            "error_message": ""
-                        }
-                    ]
-                }
-            ],
-            "servers": [
-                {
-                    "name": "drp0",
-                    "size": "490000",
-                    "permission": "",
-                    "owner": "",
-                    "last_updated_time": "",
-                    "md5": "",
-                    "comment": "",
-                    "error_code": "",
-                    "error_message": ""
-                }
-            ]
-        }
-    ]
-}
+NOTE: 其中文件的[errno, error_msg, diff_file_path, comment]，目录的[errno, error_msg]不一定有

@@ -422,8 +422,6 @@ dc_content_local_t::thd_worker_file_content_prepare(void)
 dc_common_code_t
 dc_content_local_t::thd_worker_file_content_read(void)
 {
-    dc_common_code_t ret = S_SUCCESS;
-
     DC_COMMON_ASSERT(file_path_.size() > 0);
     DC_COMMON_ASSERT(lines_sha1_ != nullptr);
     DC_COMMON_ASSERT(empty_lines_ != nullptr);

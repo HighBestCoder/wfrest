@@ -91,7 +91,6 @@ dc_api_ctx_construct(dc_api_ctx_idx_t *ctx_idx /*OUT*/)   /* 比较服务的索�
 static dc_common_code_t
 dc_api_ctx_destroy1_locked(dc_api_ctx_idx_t *ctx_idx /*CHANGED*/)
 {
-    dc_common_code_t ret;
     dc_api_ctx_t *ctx;
 
     DC_COMMON_ASSERT(ctx_idx != NULL);
@@ -148,9 +147,7 @@ dc_api_auth_add1_locked(dc_api_ctx_idx_t ctx_idx,
                         const uint32_t auth_info_len,
                         const int auth_type)
 {
-    dc_api_ctx_t *ctx;
-    dc_common_code_t ret;
-
+    LOG_ROOT_ERR(E_NOT_IMPL, "not impl");
     return E_NOT_IMPL;
 }
 

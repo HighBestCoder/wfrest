@@ -357,7 +357,7 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
     std::vector<dc_file_attr_t> file_attr_list(task_number);
 
     auto &content_list = task_content_list_[worker_id];
-    for (int i = 0; i < content_list.size(); i++) {
+    for (size_t i = 0; i < content_list.size(); i++) {
         ret = content_list[i]->do_file_attr(file_path, &file_attr_list[i]);
         LOG_CHECK_ERR_RETURN(ret);
     }
