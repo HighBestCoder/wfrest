@@ -4,6 +4,8 @@
 #include "dc_common_error.h"
 #include "cJSON.h"
 
+#include "wfrest/wfrest_json.h"
+
 #include <string>
 #include <vector>
 #include <atomic>
@@ -39,25 +41,10 @@ enum {
     FC_TASK_RESULT_INVALID,
 };
 
-// 单个文件在单个server上，与std的差异信息
-typedef struct dc_api_task_file_compare_result_server_diff {
-    std::string d_center_name;
-    std::string d_file_name; // 这个数据中的文件名
-    int64_t d_file_size; // -1 no exist;
-    std::string d_permission;
-    std::string d_owner;
-    std::string d_last_updated_time;
-    std::string d_diff_file_path;
-    std::string d_file_mode;
-    int d_error_code;
-    std::string d_error_msg;
-    bool d_is_diff { false };
-} dc_api_task_file_compare_result_server_diff_t;
-
 typedef struct dc_api_task_single_file_compare_result {
     std::string r_filename_no_dir_path;
     std::string r_dir_path;
-    std::vector<dc_api_task_file_compare_result_server_diff_t> r_server_diff_arr;
+    std::vector<wfrest::Json> r_server_diff_arr;
 } dc_api_task_single_file_compare_result_t;
 
 typedef struct dc_api_task {

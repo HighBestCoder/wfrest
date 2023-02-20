@@ -11,3 +11,62 @@
 文件夹属性：是permission, owner和last_updated_time, errno, error_msg
 
 NOTE: 其中文件的[errno, error_msg, diff_file_path, comment]，目录的[errno, error_msg]不一定有
+
+
+```Json
+{
+ "id": "task_id",
+ "next_shard": 1221,
+ "diff": [{
+   "name": "a_a.txt",
+   "dir": "/A",
+   "servers": [{
+     "is_standard": true,
+     "server_name": "datacenter1",
+     "permission": "xxx",
+     "owner": "xxx",
+     "last_updated_time": "xxx"
+    },
+    {
+     "server_name": "datacenter2",
+     "permission": "DD",
+     "owner": "DD",
+     "last_updated_time": "DD"
+    }
+   ]
+  },
+  {
+   "name": "b_a.txt",
+   "dir": "/A/B",
+   "servers": [{
+     "is_standard": true,
+     "server_name": "datacenter1",
+     "permission": "xxx",
+     "owner": "xxx",
+     "last_updated_time": "xxx"
+    },
+    {
+     "server_name": "datacenter2",
+     "permission": "xxx",
+     "owner": "xxx",
+     "last_updated_time": "xxx"
+    }
+   ]
+  },
+  {
+   "name": "/A/B/C",
+   "is_dir": true,
+   "servers": [{
+     "is_standard": true,
+     "server_name": "datacenter1",
+     "owner": "xxx"
+    },
+    {
+     "server_name": "datacenter2",
+     "owner": "yyy"
+    }
+   ]
+  }
+ ]
+}
+```

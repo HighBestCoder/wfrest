@@ -401,29 +401,28 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
     // compare the sha1 list
     for (int i = 0; i < task_number; i++) {
         if (i == std_idx) {
-            continue;
-        }
+        } else {
+            // 如果文件的属性不一样!
+            const int attr_compare_result = memcmp(&file_attr_list[i], &file_attr_list[std_idx], sizeof(dc_file_attr_t));
+            if (attr_compare_result != 0) {
+                compare_result->r_server_diff_arr.emplace_back();
+                auto &single_server_diff = compare_result->r_server_diff_arr.back();
+                single_server_diff.d_center_name = task->t_server_info_arr[i].c_center;
+                single_server_diff.d_file_size = file_attr_list[i].f_size;
+                single_server_diff.d_owner = file_attr_list[i].f_owner;
 
-        // 如果文件的属性不一样!
-        const int attr_compare_result = memcmp(&file_attr_list[i], &file_attr_list[std_idx], sizeof(dc_file_attr_t));
-        if (attr_compare_result != 0) {
-            compare_result->r_server_diff_arr.emplace_back();
-            auto &single_server_diff = compare_result->r_server_diff_arr.back();
-            single_server_diff.d_center_name = task->t_server_info_arr[i].c_center;
-            single_server_diff.d_file_size = file_attr_list[i].f_size;
-            single_server_diff.d_owner = file_attr_list[i].f_owner;
+                // conver f_last_updated to string
+                char time_str[64] = {0};
+                struct tm *tm = localtime(&file_attr_list[i].f_last_updated);
+                strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm);
+                single_server_diff.d_last_updated_time = time_str;
 
-            // conver f_last_updated to string
-            char time_str[64] = {0};
-            struct tm *tm = localtime(&file_attr_list[i].f_last_updated);
-            strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm);
-            single_server_diff.d_last_updated_time = time_str;
-
-            // convert f_mode to string
-            char mode_str[16] = {0};
-            sprintf(mode_str, "%o", file_attr_list[i].f_mode);
-            single_server_diff.d_file_mode = mode_str;
-            single_server_diff.d_is_diff = true;
+                // convert f_mode to string
+                char mode_str[16] = {0};
+                sprintf(mode_str, "%o", file_attr_list[i].f_mode);
+                single_server_diff.d_file_mode = mode_str;
+                single_server_diff.d_is_diff = true;
+            }
         }
     }
 
@@ -557,8 +556,6 @@ dc_compare_t::exe_sql_job(dc_api_task_t *task, const int worker_id)
         return E_DC_COMPARE_EXE_TASK_FAILED;
     }
 
-    // generate result
-    build_compare_result_json(task);
 
     task->t_task_status = T_TASK_OVER;
 
