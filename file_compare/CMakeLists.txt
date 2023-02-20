@@ -37,6 +37,7 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/compare
     ${CMAKE_CURRENT_SOURCE_DIR}/content
     ${CMAKE_CURRENT_SOURCE_DIR}/diff
+	${CMAKE_CURRENT_SOURCE_DIR}/internal
 )
 
 set(SYS_LIB pthread m ssl crypto)
@@ -68,6 +69,7 @@ set(SRC
 ./content/dc_content.cc
 ./diff/dc_diff.cc
 ./diff/dc_diff_content.cc
+./internal/dc_internal_task.cc
 )
 
 add_executable(main
@@ -92,3 +94,9 @@ test_file_sha1.cc
 ${SRC}
 )
 target_link_libraries(test_file_sha1 ${SYS_LIB} ${WFREST_LIB})
+
+add_executable(test_internal_task
+internal/test_dc_internal_task.cc
+${SRC}
+)
+target_link_libraries(test_internal_task ${SYS_LIB} ${WFREST_LIB})

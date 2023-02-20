@@ -141,6 +141,17 @@ int main()
 
         LOG(DC_COMMON_LOG_INFO, "task:%s body:%s", uuid.c_str(), body.c_str());
         // run internal task
+        Json json_body = Json::parse(req->body());
+        if (json_body.find("path") == json_body.end()) {
+            Json json;
+            json["uuid"] = uuid;
+            json["error"] = "path is empty";
+            resp->Json(json);
+            return;
+        }
+
+        // try to read the path info.
+        std::string file_path = json_body["path"];
 
         Json json;
         json["uuid"] = uuid;
