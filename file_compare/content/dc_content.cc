@@ -166,6 +166,8 @@ dc_content_local_t::get_file_content()
         return E_DC_CONTENT_RETRY;
     }
 
+    LOG(DC_COMMON_LOG_ERROR, "file_read_state_:%d", file_read_state_);
+
     DC_COMMON_ASSERT(0 == "not handle status");
 
     return E_DC_CONTENT_RETRY;
@@ -230,14 +232,11 @@ dc_content_local_t::thd_worker_file_attr()
     // if the file is a directory
     // return error, here just support file
     if (S_ISDIR(file_stat.st_mode)) {
-        LOG_ROOT_ERR(E_DC_CONTENT_DIR,
-                     "file is a directory, file_path=%s",
-                     file_path_.c_str());
-        return E_DC_CONTENT_DIR;
+        file_attr_->f_size = 0;
+    } else {
+        // get file size
+        file_attr_->f_size = file_stat.st_size;
     }
-
-    // get file size
-    file_attr_->f_size = file_stat.st_size;
 
     // get file mode, then convert st_mode to string
     char mode_str[32] = {0};
@@ -484,6 +483,7 @@ dc_content_local_t::thd_worker_file_content_read(void)
         // close fd
         close(file_read_fd_);
         file_read_fd_ = -1;
+        LOG(DC_COMMON_LOG_INFO, "read file finished, file_path=%s", file_path_.c_str());
 
         return E_DC_CONTENT_OVER;
     }
@@ -519,5 +519,12 @@ dc_content_local_t::thd_worker_file_content_read(void)
 
     compute_sha1_by_lines(read_len);
 
+    return S_SUCCESS;
+}
+
+dc_common_code_t
+dc_content_local_t::get_file_md5(std::string &out)
+{
+    out.append((const char*)md5_, MD5_DIGEST_LENGTH);
     return S_SUCCESS;
 }

@@ -18,297 +18,49 @@
 #include <unistd.h>
 
 std::pair<std::string, std::string>
-get_base_and_file_name(std::string &compare_file_path)
+get_base_and_file_name(std::string compare_file_path)
 {
     size_t pos = compare_file_path.find_last_of('/');
 
-    std::string dir_name = pos != std::string::npos ?
+    std::string dir_name = (pos != std::string::npos) ?
                            compare_file_path.substr(0, pos) : ".";
 
-    std::string file_name = pos == std::string::npos ?
-                            file_name : file_name.substr(pos + 1);
+    std::string file_name = (pos != std::string::npos) ?
+                            compare_file_path.substr(pos + 1): compare_file_path;
 
     return std::make_pair(dir_name, file_name);
 }
 
-dc_compare_t::dc_compare_t(const uint32_t thd_nr)
-    : task_mutex_list_(thd_nr),
-      task_cond_list_(thd_nr),
-      task_list_(thd_nr),
-      task_status_list_(thd_nr),
-      task_content_list_(thd_nr) {
+dc_compare_t::dc_compare_t(void) {
     exit_ = false;
-    DC_COMMON_ASSERT(thd_nr);
-    for (uint32_t i = 0; i < thd_nr; i++) {
-        thd_list_.emplace_back(&dc_compare_t::execute, this, i);
-    }
+    worker_threads_ = new std::thread(&dc_compare_t::execute, this);
+    DC_COMMON_ASSERT(worker_threads_ != nullptr);
 }
 
 dc_compare_t::~dc_compare_t() {
     exit_ = true;
-
-    for (auto &thd : thd_list_) {
-        thd.join();
-    }
-
-    // clean task list
-    for (uint32_t i = 0; i < task_status_list_.size(); i++) {
-        std::unique_lock<std::mutex> lock(task_mutex_list_[i]);
-        for (auto &task : task_status_list_[i]) {
-            delete task.second;
-        }
-    }
+    worker_threads_->join();
 }
 
 // 如果添加成功，那么接过生命周期
 dc_common_code_t dc_compare_t::add(dc_api_task_t *task) {
     DC_COMMON_ASSERT(task != nullptr);
-    DC_COMMON_ASSERT(!task->t_task_uuid.empty());
-    DC_COMMON_ASSERT(thd_list_.size() > 0);
-
-    // hash task->t_task_uuid and get worker_id
-    uint32_t worker_id = std::hash<std::string> {}(task->t_task_uuid) % thd_list_.size();
-
-    DC_COMMON_ASSERT(worker_id < task_mutex_list_.size());
-    std::lock_guard<std::mutex> lock(task_mutex_list_[worker_id]);
-
-    DC_COMMON_ASSERT(worker_id < task_status_list_.size());
-    // 看一下是不是已经存在了
-    if (task_status_list_[worker_id].find(task->t_task_uuid) != task_status_list_[worker_id].end()) {
-        LOG_ROOT_ERR(E_ARG_INVALID,
-                     "task:%p task:%s already exist in worker:%d",
-                     task,
-                     task->t_task_uuid.c_str(),
-                     worker_id);
-        return E_ARG_INVALID;
-    }
-
-    task_status_list_[worker_id][task->t_task_uuid] = task;
-    DC_COMMON_ASSERT(task->t_task_status == T_TASK_INIT);
-
-    LOG(DC_COMMON_LOG_INFO,
-        "task:%s add to worker:%d",
-        task->t_task_uuid.c_str(),
-        worker_id);
-
+    task_q_.write(task);
     return S_SUCCESS;
 }
 
 dc_common_code_t
-dc_compare_t::start(std::string task_uuid) {
-    DC_COMMON_ASSERT(!task_uuid.empty());
-    DC_COMMON_ASSERT(thd_list_.size() > 0);
-
-    // hash task->t_task_uuid and get worker_id
-    uint32_t worker_id = std::hash<std::string> {}(task_uuid) % thd_list_.size();
-
-    std::lock_guard<std::mutex> lock(task_mutex_list_[worker_id]);
-
-    // 看一下是不是已经存在了
-    auto iter = task_status_list_[worker_id].find(task_uuid);
-    if (iter == task_status_list_[worker_id].end()) {
-        LOG_ROOT_ERR(E_ARG_INVALID,
-                     "task:%s not exist in worker:%d",
-                     task_uuid.c_str(),
-                     worker_id);
-        return E_ARG_INVALID;
-    }
-
-    auto task = iter->second;
-    DC_COMMON_ASSERT(task != nullptr);
-    if (task->t_task_status != T_TASK_INIT) {
-        LOG_ROOT_ERR(E_ARG_INVALID,
-                     "task:%s status:%d not init_status in worker:%d, status:%d"
-                     ,
-                     task_uuid.c_str(),
-                     iter->second->t_task_status.load(std::memory_order_relaxed),
-                     worker_id);
-        return E_ARG_INVALID;
-    }
-
-    DC_COMMON_ASSERT(task->t_task_status == T_TASK_INIT);
-
-    task->t_task_status = T_TASK_TO_RUN;
-    task_list_[worker_id].push_back(task);
-
-    LOG(DC_COMMON_LOG_INFO,
-        "task:%s start in worker:%d",
-        task->t_task_uuid.c_str(),
-        worker_id);
-
-    task_cond_list_[worker_id].notify_one();
-
-    return S_SUCCESS;
-}
-
-dc_common_code_t
-dc_compare_t::cancel(std::string task_uuid) {
-    DC_COMMON_ASSERT(!task_uuid.empty());
-    DC_COMMON_ASSERT(thd_list_.size() > 0);
-
-    // hash task->t_task_uuid and get worker_id
-    uint32_t worker_id = std::hash<std::string> {}(task_uuid) % thd_list_.size();
-
-    std::lock_guard<std::mutex> lock(task_mutex_list_[worker_id]);
-
-    // 看一下是不是已经存在了
-    auto iter = task_status_list_[worker_id].find(task_uuid);
-    if (iter == task_status_list_[worker_id].end()) {
-        LOG_ROOT_ERR(E_ARG_INVALID,
-                     "task:%s not exist in worker:%d",
-                     task_uuid.c_str(),
-                     worker_id);
-        return E_ARG_INVALID;
-    }
-
-    auto task = iter->second;
-    DC_COMMON_ASSERT(task != nullptr);
-
-    LOG(DC_COMMON_LOG_INFO,
-        "task:%p task:%s cancel in worker:%d Q.size = %d",
-        task,
-        task->t_task_uuid.c_str(),
-        worker_id,
-        task_list_[worker_id].size());
-
-    if (task->t_task_status == T_TASK_OVER) {
-        // remove this task
-        task_status_list_[worker_id].erase(iter);
-
-        // set the file name to t_task_uuid;
-        std::string file_name = task->t_task_uuid;
-        // unlink the file = remove file!
-        unlink(file_name.c_str());
-
-        delete task;
-    }
-
-    return S_SUCCESS;
-}
-
-dc_common_code_t
-dc_compare_t::result(std::string task_uuid,
-                     wfrest::Json &result_json)
+dc_compare_t::get(wfrest::Json &result_json)
 {
-    DC_COMMON_ASSERT(!task_uuid.empty());
-    DC_COMMON_ASSERT(thd_list_.size() > 0);
-
-    // find task in task_status_list_
-    // hash task->t_task_uuid and get worker_id
-    uint32_t worker_id = std::hash<std::string> {}(task_uuid) % thd_list_.size();
-    std::lock_guard<std::mutex> lock(task_mutex_list_[worker_id]);
-
-    // 看一下是不是已经不存在了
-    auto iter = task_status_list_[worker_id].find(task_uuid);
-    if (iter == task_status_list_[worker_id].end()) {
-        LOG_ROOT_ERR(E_OS_ENV_NOT_FOUND,
-                     "task:%s not exist in worker:%d",
-                     task_uuid.c_str(),
-                     worker_id);
-        return E_OS_ENV_NOT_FOUND;
+    dc_api_task_t *task = nullptr;
+    bool has_task = out_q_.read_once((void**)&task);
+    if (!has_task) {
+        return E_DC_TASK_MEM_VOPS_NOT_OVER;
     }
 
-    auto task = iter->second;
-    if (task->t_task_status == T_TASK_OVER) {
-        LOG(DC_COMMON_LOG_INFO,
-            "task:%s is over, begin to work on get result",
-            task->t_task_uuid.c_str());
-
-        result_json.swap(task->t_compare_result_json);
-
-        return S_SUCCESS;
-    }
-
-    if (task->t_task_status == T_TASK_CANCEL) {
-        // task cancel
-        LOG(DC_COMMON_LOG_INFO,
-            "task:%p task:%s cancel in worker:%d",
-            task,
-            task->t_task_uuid.c_str(),
-            worker_id);
-        return E_DC_TASK_HAS_BEEN_CANCELED;
-    }
-
-    // task not over
-    return E_DC_TASK_MEM_VOPS_NOT_OVER;
-}
-
-static uint64_t
-dc_compare_exe_time_to_usec(struct timeval t) {
-    return (uint64_t)((uint64_t)t.tv_sec * 1000 * 1000 + t.tv_usec);
-}
-
-dc_common_code_t
-dc_compare_t::check_task_is_failed(dc_api_task_t* &task) {
     DC_COMMON_ASSERT(task != nullptr);
-
-    if (task->t_task_status == T_TASK_CANCEL) {
-        LOG_ROOT_ERR(E_DC_TASK_HAS_BEEN_CANCELED,
-                     "task:%s has been canceled",
-                     task->t_task_uuid.c_str());
-        return E_DC_TASK_HAS_BEEN_CANCELED;
-    }
-
-    // if all sql has been failed!
-    if (task->t_sql_error_nr == task->t_server_info_arr.size()) {
-        // set task error flag, and set it as over.
-        // record job end time
-        for (auto &server: task->t_server_info_arr) {
-            gettimeofday(&server.c_end_time, NULL);
-            server.c_total_time_ms = (dc_compare_exe_time_to_usec(server.c_end_time) -
-                                      dc_compare_exe_time_to_usec(server.c_begin_time)) / 1000;
-        }
-
-        task->t_task_status = T_TASK_OVER;
-        LOG_ROOT_ERR(E_DC_COMPARE_EXE_TASK_FAILED,
-                     "t_sql_error_nr:%d == t_server_info_arr.size():%d",
-                     task->t_sql_error_nr,
-                     task->t_server_info_arr.size());
-
-        return E_DC_COMPARE_EXE_TASK_FAILED;
-    }
-
-    // if std server has been failed
-    DC_COMMON_ASSERT(task->t_std_idx >= 0);
-    DC_COMMON_ASSERT(task->t_std_idx < (int)task->t_server_info_arr.size());
-
-    if (task->t_server_info_arr[task->t_std_idx].c_error != S_SUCCESS) {
-        // set task error flag, and set it as over.
-        // record job end time
-        for (auto &server: task->t_server_info_arr) {
-            gettimeofday(&server.c_end_time, NULL);
-            server.c_total_time_ms = (dc_compare_exe_time_to_usec(server.c_end_time) -
-                                      dc_compare_exe_time_to_usec(server.c_begin_time)) / 1000;
-        }
-
-        task->t_task_status = T_TASK_OVER;
-        LOG_ROOT_ERR(E_DC_COMPARE_EXE_TASK_FAILED,
-                     "std server has been failed, error:%d",
-                     task->t_server_info_arr[0].c_error);
-
-        return E_DC_COMPARE_EXE_TASK_FAILED;
-    }
-
-    if (task->t_sql_error_nr == task->t_server_info_arr.size() - 1 &&
-            task->t_sql_error_nr > 0) {
-        // set task error flag, and set it as over.
-        // record job end time
-        for (auto &server: task->t_server_info_arr) {
-            gettimeofday(&server.c_end_time, NULL);
-            server.c_total_time_ms = (dc_compare_exe_time_to_usec(server.c_end_time) -
-                                      dc_compare_exe_time_to_usec(server.c_begin_time)) / 1000;
-        }
-
-        task->t_task_status = T_TASK_OVER;
-        LOG_ROOT_ERR(E_DC_COMPARE_EXE_TASK_FAILED,
-                     "t_sql_error_nr:%d == t_server_info_arr.size():%d - 1, there is just one server is ok!",
-                     task->t_sql_error_nr,
-                     task->t_server_info_arr.size());
-
-        return E_DC_COMPARE_EXE_TASK_FAILED;
-    }
-
-    // 还可以继续跑!
+    result_json.swap(task->t_compare_result_json);
+    delete task;
     return S_SUCCESS;
 }
 
@@ -330,8 +82,8 @@ dc_compare_t::check_task_is_failed(dc_api_task_t* &task) {
  */
 dc_common_code_t
 dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
-                                   const int worker_id,
                                    const char *c_file_path,
+                                   bool is_dir,
                                    wfrest::Json &single_file_compare_result_json/*CHANGED*/)
 {
     dc_common_code_t ret = S_SUCCESS;
@@ -349,27 +101,26 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
     DC_COMMON_ASSERT(std_idx >= 0);
     DC_COMMON_ASSERT(std_idx < task_number);
 
+    std::vector<dc_content_t *> content_list;
+
     for (int i = 0; i < task_number; i++) {
         // TODO std 用local_content_t
         // other 用户remote_content_t
         dc_content_t *content = new dc_content_local_t(&task->t_server_info_arr[i]);
         DC_COMMON_ASSERT(content != nullptr);
 
-        task_content_list_[worker_id].push_back(content);
+        content_list.push_back(content);
     }
 
     std::string file_path(c_file_path);
     std::vector<dc_file_attr_t> file_attr_list(task_number);
 
-    auto &content_list = task_content_list_[worker_id];
     for (size_t i = 0; i < content_list.size(); i++) {
         ret = content_list[i]->do_file_attr(file_path, &file_attr_list[i]);
         LOG_CHECK_ERR_RETURN(ret);
     }
 
     std::vector<bool> job_has_done(task_number, false);
-
-    LOG(DC_COMMON_LOG_INFO, "[main] task_number:%d", task_number);
 
     int job_done_nr = 0;
     while (job_done_nr < task_number) {
@@ -384,8 +135,6 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
                 continue;
             }
 
-            LOG(DC_COMMON_LOG_INFO, "[main] center:%s get_file_attr ret:%d", task->t_server_info_arr[i].c_center.c_str(), ret);
-
             if (ret == S_SUCCESS) {
                 job_has_done[i] = true;
                 job_done_nr++;
@@ -397,8 +146,55 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
         }
     }
 
-    LOG(DC_COMMON_LOG_INFO, "[main] all job has done, job_done_nr:%d", job_done_nr);
+    auto file_name_pair = get_base_and_file_name(file_path);
+    single_file_compare_result_json["dir"] = file_name_pair.first;
+    single_file_compare_result_json["name"] = file_name_pair.second;
     single_file_compare_result_json["servers"] = wfrest::Json::array();
+
+    // set job_has_done to false
+    for (int i = 0; i < task_number; i++) {
+        job_has_done[i] = false;
+    }
+    std::vector<std::string> file_md5_list(task_number);
+
+    if (!is_dir) {
+        // get file content
+        std::vector<std::vector<std::string>> file_content_list(task_number);
+        std::vector<int> empty_lines_nr_list(task_number, 0);
+        for (int i = 0; i < task_number; i++) {
+            auto &content = content_list[i];
+            ret = content->do_file_content(file_path,
+                                           &file_content_list[i],
+                                           &empty_lines_nr_list[i]);
+            LOG_CHECK_ERR_RETURN(ret);
+        }
+    
+        job_done_nr = 0;
+        while (job_done_nr < task_number) {
+            for (int i = 0; i < task_number; i++) {
+                auto &content = content_list[i];
+                if (job_has_done[i]) {
+                    continue;
+                }
+    
+                dc_common_code_t ret = content->get_file_content();
+                if (ret == E_DC_CONTENT_RETRY) {
+                    continue;
+                }
+    
+                if (ret == S_SUCCESS) {
+                    job_has_done[i] = true;
+                    ret = content->get_file_md5(file_md5_list[i]);
+                    LOG_CHECK_ERR_RETURN(ret);
+                    job_done_nr++;
+                } else {
+                    job_has_done[i] = true;
+                    LOG_CHECK_ERR(ret);
+                    job_done_nr++;
+                }
+            }
+        }
+    }
 
     // compare the sha1 list
     for (int i = 0; i < task_number; i++) {
@@ -409,8 +205,8 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
             std_server_file_info["owner"] = file_attr_list[i].f_owner;
             std_server_file_info["last_updated"] = file_attr_list[i].f_last_updated;
             std_server_file_info["mode"] = file_attr_list[i].f_mode;
-            std_server_file_info["md5"] = file_attr_list[i].f_md5;
             std_server_file_info["is_standard"] = true;
+            std_server_file_info["md5"] = file_md5_list[i];
 
             single_file_compare_result_json["servers"].push_back(std_server_file_info);
         } else {
@@ -436,8 +232,8 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
                     diff_server_info["mode"] = file_attr_list[i].f_mode;
                 }
                 // if f_md5 is not the same
-                if (file_attr_list[std_idx].f_md5 != file_attr_list[i].f_md5) {
-                    diff_server_info["md5"] = file_attr_list[i].f_md5;
+                if (file_md5_list[std_idx] != file_md5_list[i]) {
+                    diff_server_info["md5"] = file_md5_list[i];
                 }
                 single_file_compare_result_json["servers"].push_back(diff_server_info);
             }
@@ -454,7 +250,7 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
 }
 
 dc_common_code_t
-dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task, const int worker_id, const char *dir_path)
+dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task, const char *dir_path)
 {
     dc_common_code_t ret = S_SUCCESS;
 
@@ -471,7 +267,7 @@ dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task, const int worker_id, cons
     task->t_compare_result_json["diffs"].emplace_back();
     wfrest::Json &dir_json = task->t_compare_result_json["diffs"].back();
     dir_json["name"] = dir_path;
-    ret = exe_sql_job_for_file(task, worker_id, dir_path, dir_json);
+    ret = exe_sql_job_for_file(task, dir_path, true, dir_json);
     LOG_CHECK_ERR_RETURN(ret);
 
     DIR *d;
@@ -484,7 +280,7 @@ dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task, const int worker_id, cons
                     continue;
                 }
                 std::string new_path = std::string(dir_path) + "/" + std::string(dir->d_name);
-                ret = exe_sql_job_for_dir(task, worker_id, new_path.c_str());
+                ret = exe_sql_job_for_dir(task, new_path.c_str());
                 LOG_CHECK_ERR_RETURN(ret);
             } else {
                 std::string new_path = std::string(dir_path) + "/" + std::string(dir->d_name);
@@ -506,8 +302,8 @@ dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task, const int worker_id, cons
                 }
 
                 ret = exe_sql_job_for_file(task,
-                                           worker_id,
                                            new_path.c_str(),
+                                           false/*not_dir*/,
                                            single_file_compare_result_json);
                 LOG_CHECK_ERR_RETURN(ret);
             }
@@ -521,7 +317,7 @@ dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task, const int worker_id, cons
 // 注意，这里运行的都是block的请求
 // 注意，这里并不去管理task的生命周期，只是去执行task
 dc_common_code_t
-dc_compare_t::exe_sql_job(dc_api_task_t *task, const int worker_id)
+dc_compare_t::exe_sql_job(dc_api_task_t *task)
 {
     dc_common_code_t ret = S_SUCCESS;
 
@@ -550,13 +346,14 @@ dc_compare_t::exe_sql_job(dc_api_task_t *task, const int worker_id)
 
     if (S_ISREG(file_stat.st_mode)) {
         task->t_compare_result_json["diffs"].emplace_back();
-        ret = exe_sql_job_for_file(task, worker_id,
+        ret = exe_sql_job_for_file(task,
                                    compare_file_path.c_str(),
+                                   false/*not dir*/,
                                    task->t_compare_result_json["diffs"].back());
         LOG_CHECK_ERR_RETURN(ret);
     } else if (S_ISDIR(file_stat.st_mode)) {
         // 如果是目录，那么就需要一个文件一个文件地比，并且生成相应的结果
-        ret = exe_sql_job_for_dir(task, worker_id, compare_file_path.c_str());
+        ret = exe_sql_job_for_dir(task, compare_file_path.c_str());
     } else {
         LOG_ROOT_ERR(E_DC_COMPARE_EXE_TASK_FAILED,
                      "compare_file_path:%s is not a file or dir",
@@ -564,49 +361,10 @@ dc_compare_t::exe_sql_job(dc_api_task_t *task, const int worker_id)
         return E_DC_COMPARE_EXE_TASK_FAILED;
     }
 
-
-    task->t_task_status = T_TASK_OVER;
-
     return ret;
 }
 
-dc_api_task_t*
-dc_compare_t::pop_one_task(const int worker_id) {
-    DC_COMMON_ASSERT(worker_id >= 0);
-    DC_COMMON_ASSERT((int)worker_id < (int)task_list_.size());
-
-    dc_api_task_t *task = nullptr;
-
-    std::unique_lock<std::mutex> lock(task_mutex_list_[worker_id]);
-    task_cond_list_[worker_id].wait_for(lock,
-                                        std::chrono::milliseconds(100),
-                                        [this, worker_id] { return !task_list_[worker_id].empty(); });
-
-    if (!task_list_[worker_id].empty()) {
-        task = task_list_[worker_id].front();
-        task_list_[worker_id].pop_front();
-    }
-
-    // if task not null, then MUST exist in status_list
-    if (task != nullptr) {
-        auto iter = task_status_list_[worker_id].find(task->t_task_uuid);
-        DC_COMMON_ASSERT(iter != task_status_list_[worker_id].end());
-    }
-
-    // 如果这个任务已经是cancel状态了，那么就不需要再执行了
-    if (task != nullptr && task->t_task_status == T_TASK_CANCEL) {
-        LOG(DC_COMMON_LOG_INFO,
-            "task:%s is cancel, remove from hash_worker",
-            task->t_task_uuid.c_str());
-        task_status_list_[worker_id].erase(task->t_task_uuid);
-        delete task;
-        task = nullptr;
-    }
-
-    return task;
-}
-
-dc_common_code_t dc_compare_t::execute(const int worker_id) {
+dc_common_code_t dc_compare_t::execute() {
     dc_common_code_t ret;
 
     while (!exit_) {
@@ -614,20 +372,23 @@ dc_common_code_t dc_compare_t::execute(const int worker_id) {
             break;
         }
 
-        auto task = pop_one_task(worker_id);
-        if (task == nullptr) {
+        dc_api_task_t *task = nullptr;
+        bool has_task = task_q_.read_once((void**)&task);
+        if (!has_task) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         }
 
-        ret = exe_sql_job(task, worker_id);
+        DC_COMMON_ASSERT(task != nullptr);
+
+        ret = exe_sql_job(task);
         LOG_CHECK_ERR(ret);
+        task->t_task_status = T_TASK_OVER;
         if (ret != S_SUCCESS) {
             dc_diff_failed_content_t diff { task };
             diff.gen_diff(task);
         }
     } // end while
-
-    LOG(DC_COMMON_LOG_INFO, "main worker:%d is over", worker_id);
 
     return S_SUCCESS;
 }

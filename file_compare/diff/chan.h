@@ -116,5 +116,44 @@ class msg_chan_t {
     SPSCQueue<int> q_;
 };
 
+class task_chan_t {
+   public:
+    task_chan_t() : q_(64) {}
+
+   public:
+    bool read_once(void **val) {
+        void *v;
+        if (q_.front()) {
+            v = *q_.front();
+            q_.pop();
+
+            if (val) {
+                *val = v;
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    void *read_stuck() {
+        while (!q_.front())
+            ;
+        auto v = *q_.front();
+        q_.pop();
+        return v;
+    }
+
+    void write(void* v) {
+        q_.push(v);
+    }
+
+    int size() {
+        return q_.size();
+    }
+
+   private:
+    SPSCQueue<void*> q_;
+};
 
 #endif /* ! end EX_CHAN_H_ */

@@ -22,7 +22,7 @@ int main()
     signal(SIGINT, sig_handler);
 
     HttpServer svr;
-    dc_compare_t compare_worker(4);
+    dc_compare_t compare_worker;
 
     // 1. You can `./13_compess_client` 
     // 2. or use python script `python3 13_compress_client.py`
@@ -66,6 +66,8 @@ int main()
         LOG(DC_COMMON_LOG_INFO, "task:%s body:%s", uuid.c_str(), body.c_str());
 
         dc_api_task_t *task = new dc_api_task_t();
+        // 这个task生命周期会在get的时候被销毁
+
         DC_COMMON_ASSERT(task != nullptr);
 
         auto ret = build_task_from_json(body.c_str(), body.size(), task);
@@ -91,15 +93,6 @@ int main()
             Json json;
             json["uuid"] = uuid;
             json["error"] = "compare_worker.add failed: error:" + std::to_string((int)ret);
-            resp->Json(json);
-            return;
-        }
-
-        ret = compare_worker.start(uuid);
-        if (ret != S_SUCCESS) {
-            Json json;
-            json["uuid"] = uuid;
-            json["error"] = "compare_worker.start failed: error:" + std::to_string((int)ret);
             resp->Json(json);
             return;
         }
@@ -179,9 +172,8 @@ int main()
         }
 
         Json result_json;
-        auto ret = compare_worker.result(uuid, result_json);
+        auto ret = compare_worker.get(result_json);
         if (ret == S_SUCCESS) {
-            ret = compare_worker.cancel(uuid);
             DC_COMMON_ASSERT(ret == S_SUCCESS);
             resp->Json(result_json);
             return;

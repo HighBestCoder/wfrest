@@ -19,14 +19,12 @@ typedef struct dc_file_attr {
     std::string f_mode;         // 文件的权限
     std::string f_owner;        // 文件拥有者
     std::string f_last_updated; // 文件最后更新时间
-    std::string f_md5;          // 文件的md5
 
     bool compare(const dc_file_attr &f) const {
         return (f_size == f.f_size &&
                 f_mode == f.f_mode &&
                 f_owner == f.f_owner &&
-                f_last_updated == f.f_last_updated &&
-                f_md5 == f.f_md5);
+                f_last_updated == f.f_last_updated);
     }
 } dc_file_attr_t;
 
@@ -53,6 +51,9 @@ class dc_content_t {
                                               int *empty_lines /*OUT*/) = 0;
     // 异步获取整个文件的每一行的sha1
     virtual dc_common_code_t get_file_content() = 0;
+
+    // 整个文件的md5
+    virtual dc_common_code_t get_file_md5(std::string &md5_out) = 0;
 };
 
 class dc_content_local_t : public dc_content_t {
@@ -76,6 +77,8 @@ class dc_content_local_t : public dc_content_t {
                                              int *empty_lines /*OUT*/) override;
     // 异步获取整个文件的每一行的sha1
     virtual dc_common_code_t get_file_content(void) override;
+
+    virtual dc_common_code_t get_file_md5(std::string &md5_out) override;
 
 private:
     // worker_线程的主函数
@@ -170,6 +173,8 @@ class dc_content_remote_t : public dc_content_t {
 
     // 异步获取整个文件的每一行的sha1
     virtual dc_common_code_t get_file_content() override;
+
+    virtual dc_common_code_t get_file_md5(std::string &md5_out) override;
 };
 
 #endif /* ! _DC_CONTENT_H_ */

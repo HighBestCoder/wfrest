@@ -83,21 +83,6 @@ const char *
 dc_common_error_task_status(uint32_t task_status);
 
 /*
- * 为了应对各种形式的输入，比如json/yaml/ini/cstr
- * 这些字符串。以及字符串中可能存在的各种编码
- * 这里先定义一下dc_text
- *
- * TODO 后面把char || len || type这些参数都换成这个。
- */
-
-typedef struct dc_text
-{
-    uint8_t *t_data;
-    uint32_t t_len;
-    int t_format;
-} dc_text_t;
-
-/*
  * 通过code_t查询到具体的出错信息
  */
 const char *

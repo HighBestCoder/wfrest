@@ -12,6 +12,7 @@ if __name__ == "__main__":
 
     # decode body to json
     import json
-    print(json.loads(body))
+    j = json.loads(body)
+    print(json.dumps(j, indent=2))
 
 
