@@ -383,11 +383,7 @@ dc_common_code_t dc_compare_t::execute() {
 
         ret = exe_sql_job(task);
         LOG_CHECK_ERR(ret);
-        task->t_task_status = T_TASK_OVER;
-        if (ret != S_SUCCESS) {
-            dc_diff_failed_content_t diff { task };
-            diff.gen_diff(task);
-        }
+        out_q_.write((void*)task);
     } // end while
 
     return S_SUCCESS;
