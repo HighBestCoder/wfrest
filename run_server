@@ -1,0 +1,3 @@
+#!/bin/bash
+
+docker run -idt --rm -p 8888:8888 --name  server file_compare /opt/fc/file_compare/main
