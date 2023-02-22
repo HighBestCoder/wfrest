@@ -182,7 +182,7 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
                     continue;
                 }
     
-                if (ret == S_SUCCESS) {
+                if (ret == S_SUCCESS || ret == E_DC_CONTENT_OVER) {
                     job_has_done[i] = true;
                     ret = content->get_file_md5(file_md5_list[i]);
                     LOG_CHECK_ERR_RETURN(ret);
@@ -275,6 +275,11 @@ dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task, const char *dir_path)
     d = opendir(dir_path);
     if (d) {
         while ((dir = readdir(d)) != NULL) {
+            // check dir->d_type is a link?
+            if (dir->d_type == DT_LNK) {
+                continue;
+            }
+
             if (dir->d_type == DT_DIR) {
                 if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0) {
                     continue;

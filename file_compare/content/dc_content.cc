@@ -47,6 +47,11 @@ dc_content_local_t::~dc_content_local_t() {
     }
 
     DC_COMMON_ASSERT(file_read_buf_ == nullptr);
+
+    if (file_read_fd_ != -1) {
+        LOG(DC_COMMON_LOG_ERROR, "[JIYOU] file_read_fd_:%d is not closed, file:%s", file_read_fd_, file_path_.c_str());
+    }
+
     DC_COMMON_ASSERT(file_read_fd_ == -1);
 }
 
@@ -139,10 +144,15 @@ dc_content_local_t::get_file_content()
 
         dc_common_code_t ret_code = (dc_common_code_t)ret;
 
+        // ret_code == S_SUCCESS
+        // 只是表明这次读成功了，但是文件可能还需要再接着下一次读!
         if (ret_code == S_SUCCESS) {
             // 读成功了!
+            // 把状态改成：当前这次读已经读完了
+            // 注意！这个状态并不是说整个文件的内容已经读完了!
             file_read_state_ = FILE_CONTENT_READ_OVER;
-            return ret_code;
+            // 返回的值表示还要继续读
+            return E_DC_CONTENT_RETRY;
         }
 
         if (ret_code == E_DC_CONTENT_OVER) {
@@ -166,7 +176,7 @@ dc_content_local_t::get_file_content()
         return E_DC_CONTENT_RETRY;
     }
 
-    LOG(DC_COMMON_LOG_ERROR, "file_read_state_:%d", file_read_state_);
+    LOG(DC_COMMON_LOG_ERROR, "[JIYOU] file_read_state_:%d", file_read_state_);
 
     DC_COMMON_ASSERT(0 == "not handle status");
 
@@ -509,6 +519,7 @@ dc_content_local_t::thd_worker_file_content_read(void)
         }
 
         // close fd
+        LOG(DC_COMMON_LOG_INFO, "[JIYOU] read file finished, file_path=%s", file_path_.c_str());
         close(file_read_fd_);
         file_read_fd_ = -1;
 
@@ -525,6 +536,12 @@ dc_content_local_t::thd_worker_file_content_read(void)
 dc_common_code_t
 dc_content_local_t::get_file_md5(std::string &out)
 {
-    out.append((const char*)md5_, MD5_DIGEST_LENGTH);
+    // convert the md5_ to print the md5 value
+    char md5_str[MD5_DIGEST_LENGTH * 2 + 1];
+    for (int i = 0; i < MD5_DIGEST_LENGTH; i++) {
+        snprintf(md5_str + i * 2, 3, "%02x", md5_[i]);
+    }
+    md5_str[MD5_DIGEST_LENGTH * 2] = '\0';
+    out = md5_str;
     return S_SUCCESS;
 }
