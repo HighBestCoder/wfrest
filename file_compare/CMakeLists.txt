@@ -76,10 +76,16 @@ ${SRC}
 )
 target_link_libraries(main ${SYS_LIB} ${WFREST_LIB})
 
-add_executable(test_client
-    ./test_client.cc
+add_executable(test_post
+    ./test_post.cc
 )
-target_link_libraries(test_client ${SYS_LIB} ${WFREST_LIB})
+target_link_libraries(test_post ${SYS_LIB} ${WFREST_LIB})
+
+
+add_executable(test_get
+    ./test_get.cc
+)
+target_link_libraries(test_get ${SYS_LIB} ${WFREST_LIB})
 
 add_executable(test_file_sha1
 test_file_sha1.cc
