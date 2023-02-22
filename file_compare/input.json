@@ -1,0 +1,15 @@
+{
+  "uuid": "b9460404-f559-4a93-be01-675045263713",
+  "result_type": 0,
+  "servers": [
+    {
+      "center": "m1",
+      "host": "localhost",
+      "user": "admin",
+      "password": "admin",
+      "port": 8091,
+      "standard": true,
+      "path_to_compare": "/opt"
+    }
+  ]
+}
