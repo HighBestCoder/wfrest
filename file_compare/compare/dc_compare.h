@@ -40,6 +40,11 @@ class dc_compare_t {
   dc_common_code_t exe_sql_job_for_dir(dc_api_task_t *task,
                                        const char *dir_path);
 
+  // 文件列表的比较函数
+  // 比较的结果会放到task->t_compare_result_json中
+  dc_common_code_t exe_sql_job_for_files(dc_api_task_t *task,
+                                         const std::vector<std::string> &files_to_compare);
+
   // 线程函数：执行一个任务
   dc_common_code_t exe_sql_job(dc_api_task_t *task);
 

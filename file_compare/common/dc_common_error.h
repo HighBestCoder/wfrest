@@ -28,6 +28,7 @@
 typedef enum dc_common_code
 {
     S_SUCCESS = 0,
+    E_RETRY = 1,
 
     E_NOT_IMPL,
     E_ASSERT,

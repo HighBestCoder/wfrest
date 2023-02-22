@@ -250,7 +250,7 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
 }
 
 dc_common_code_t
-dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task, const char *dir_path)
+dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task)
 {
     dc_common_code_t ret = S_SUCCESS;
 
@@ -334,37 +334,41 @@ dc_compare_t::exe_sql_job(dc_api_task_t *task)
     auto &std_server_info = task->t_server_info_arr[task->t_std_idx];
     auto &compare_file_path = std_server_info.c_path_to_compare;
 
-    // check compare_file_path is DIR or file
+    std::vector<std::string> files_to_compare;
+
+    // 生成第一个比较item
+    files_to_compare.push_back(compare_file_path);
+
     struct stat file_stat;
+
+    // 如果标装方stat出错!
     if (stat(compare_file_path.c_str(), &file_stat) != 0) {
-        LOG_ROOT_ERR(E_DC_COMPARE_EXE_TASK_FAILED,
-                     "stat compare_file_path:%s failed, error:%s",
-                     compare_file_path.c_str(),
-                     strerror(errno));
-        return E_DC_COMPARE_EXE_TASK_FAILED;
-    }
-
-    LOG(DC_COMMON_LOG_INFO, "[main] begin to execute task:%s", task->t_task_uuid.c_str());
-
-    task->t_compare_result_json["id"] = task->t_task_uuid;
-    task->t_compare_result_json["next_shard"] = -1;
-    task->t_compare_result_json["diffs"] = wfrest::Json::array();
-
-    if (S_ISREG(file_stat.st_mode)) {
-        task->t_compare_result_json["diffs"].emplace_back();
-        ret = exe_sql_job_for_file(task,
-                                   compare_file_path.c_str(),
-                                   false/*not dir*/,
-                                   task->t_compare_result_json["diffs"].back());
-        LOG_CHECK_ERR_RETURN(ret);
-    } else if (S_ISDIR(file_stat.st_mode)) {
-        // 如果是目录，那么就需要一个文件一个文件地比，并且生成相应的结果
-        ret = exe_sql_job_for_dir(task, compare_file_path.c_str());
+        // 直接用这个files_to_compare来完成后续的比较任务
+        // 我们就假设这个是一个单独的内容。只需要去拿属性!
+        // 其他比较方，不需要去遍历`compare_file_path`下面的内容什么的!
+        ret = exe_sql_job_for_files(task, files_to_compare);
+        LOG_CHECK_ERR(ret);
     } else {
-        LOG_ROOT_ERR(E_DC_COMPARE_EXE_TASK_FAILED,
-                     "compare_file_path:%s is not a file or dir",
-                     compare_file_path.c_str());
-        return E_DC_COMPARE_EXE_TASK_FAILED;
+        if (S_ISREG(file_stat.st_mode)) {
+            ret = exe_sql_job_for_files(task, files_to_compare);
+            LOG_CHECK_ERR(ret);
+            if (ret != S_SUCCESS) {
+                task->t_compare_result_json["errno"] = ret;
+                task->t_compare_result_json["error"] = dc_common_code_msg(ret);
+            }
+        } else if (S_ISDIR(file_stat.st_mode)) {
+            // 如果是目录，那么就需要一个文件一个文件地比，并且生成相应的结果
+            ret = exe_sql_job_for_dir(task);
+            LOG_CHECK_ERR(ret);
+            if (ret != S_SUCCESS) {
+                task->t_compare_result_json["errno"] = ret;
+                task->t_compare_result_json["error"] = dc_common_code_msg(ret);
+            }
+        } else {
+            // 如果是其他类型的文件，那么直接返回错误
+            task->t_compare_result_json["error"] = "not support file type:" +
+                                                   std::to_string(file_stat.st_mode);
+        }
     }
 
     return ret;
@@ -386,6 +390,12 @@ dc_common_code_t dc_compare_t::execute() {
         }
 
         DC_COMMON_ASSERT(task != nullptr);
+
+        // 先做好一个空的json
+        // exe_sql_job在执行的时候，只是往这个diffs里面填充内容!
+        task->t_compare_result_json["uuid"] = task->t_task_uuid;
+        task->t_compare_result_json["diffs"] = wfrest::Json::array();
+        task->t_compare_result_json["next_shard"] = -1;
 
         ret = exe_sql_job(task);
         LOG_CHECK_ERR(ret);
