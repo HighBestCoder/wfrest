@@ -267,6 +267,7 @@ dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task, const char *dir_path)
     task->t_compare_result_json["diffs"].emplace_back();
     wfrest::Json &dir_json = task->t_compare_result_json["diffs"].back();
     dir_json["name"] = dir_path;
+    dir_json["is_dir"] = true;
     ret = exe_sql_job_for_file(task, dir_path, true, dir_json);
     LOG_CHECK_ERR_RETURN(ret);
 
