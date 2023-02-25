@@ -1,32 +1,29 @@
 #include "dc_compare.h"
+
+#include <dirent.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#include <functional>
+#include <vector>
+
 #include "dc_common_assert.h"
 #include "dc_common_error.h"
+#include "dc_common_trace_log.h"
 #include "dc_diff.h"
 #include "dc_diff_content.h"
 #include "dc_diff_failed_content.h"
-#include "dc_common_trace_log.h"
 
-#include <stdlib.h>
-#include <string.h>
-#include <vector>
-#include <functional>
-
-#include <dirent.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <unistd.h>
-
-std::pair<std::string, std::string>
-get_base_and_file_name(std::string compare_file_path)
-{
+std::pair<std::string, std::string> get_base_and_file_name(std::string compare_file_path) {
     size_t pos = compare_file_path.find_last_of('/');
 
-    std::string dir_name = (pos != std::string::npos) ?
-                           compare_file_path.substr(0, pos) : ".";
+    std::string dir_name = (pos != std::string::npos) ? compare_file_path.substr(0, pos) : ".";
 
-    std::string file_name = (pos != std::string::npos) ?
-                            compare_file_path.substr(pos + 1): compare_file_path;
+    std::string file_name = (pos != std::string::npos) ? compare_file_path.substr(pos + 1) : compare_file_path;
 
     return std::make_pair(dir_name, file_name);
 }
@@ -49,11 +46,9 @@ dc_common_code_t dc_compare_t::add(dc_api_task_t *task) {
     return S_SUCCESS;
 }
 
-dc_common_code_t
-dc_compare_t::get(wfrest::Json &result_json)
-{
+dc_common_code_t dc_compare_t::get(wfrest::Json &result_json) {
     dc_api_task_t *task = nullptr;
-    bool has_task = out_q_.read_once((void**)&task);
+    bool has_task = out_q_.read_once((void **)&task);
     if (!has_task) {
         return E_DC_TASK_MEM_VOPS_NOT_OVER;
     }
@@ -80,12 +75,8 @@ dc_compare_t::get(wfrest::Json &result_json)
  *
  * 第五步：由A生成差异!
  */
-dc_common_code_t
-dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
-                                   const char *c_file_path,
-                                   bool is_dir,
-                                   wfrest::Json &single_file_compare_result_json/*CHANGED*/)
-{
+dc_common_code_t dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task, const char *c_file_path, bool is_dir,
+                                                    wfrest::Json &single_file_compare_result_json /*CHANGED*/) {
     dc_common_code_t ret = S_SUCCESS;
 
     LOG(DC_COMMON_LOG_INFO, "[main] task:%s compare file:%s", task->t_task_uuid.c_str(), c_file_path);
@@ -163,12 +154,10 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
         std::vector<int> empty_lines_nr_list(task_number, 0);
         for (int i = 0; i < task_number; i++) {
             auto &content = content_list[i];
-            ret = content->do_file_content(file_path,
-                                           &file_content_list[i],
-                                           &empty_lines_nr_list[i]);
+            ret = content->do_file_content(file_path, &file_content_list[i], &empty_lines_nr_list[i]);
             LOG_CHECK_ERR_RETURN(ret);
         }
-    
+
         job_done_nr = 0;
         while (job_done_nr < task_number) {
             for (int i = 0; i < task_number; i++) {
@@ -176,12 +165,12 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
                 if (job_has_done[i]) {
                     continue;
                 }
-    
+
                 dc_common_code_t ret = content->get_file_content();
                 if (ret == E_DC_CONTENT_RETRY) {
                     continue;
                 }
-    
+
                 if (ret == S_SUCCESS || ret == E_DC_CONTENT_OVER) {
                     job_has_done[i] = true;
                     ret = content->get_file_md5(file_md5_list[i]);
@@ -240,7 +229,7 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
         }
     }
 
-    for (auto &content: content_list) {
+    for (auto &content : content_list) {
         delete content;
     }
 
@@ -249,82 +238,132 @@ dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task,
     return ret;
 }
 
-dc_common_code_t
-dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task)
-{
+dc_common_code_t dc_compare_t::exe_sql_job_for_single_item_file(dc_api_task_t *task, const char *file_rull_path,
+                                                                const int json_idx,
+                                                                std::vector<dc_content_t *> &content_list) {
+    DC_COMMON_ASSERT(task != nullptr);
+    DC_COMMON_ASSERT(task->t_std_idx >= 0);
+    DC_COMMON_ASSERT(task->t_std_idx < (int)task->t_server_info_arr.size());
+    DC_COMMON_ASSERT(file_rull_path != nullptr);
+    DC_COMMON_ASSERT(task->t_server_info_arr.size() == content_list.size());
+    // 一次发一个文件!
+}
+
+dc_common_code_t dc_compare_t::exe_sql_job_for_single_item_dir(dc_api_task_t *task, const char *dir_full_path,
+                                                               const int json_idx,
+                                                               std::vector<dc_content_t *> &content_list) {
+    dc_common_code_t ret = S_SUCCESS;
+    const int dir_batch_size = 1000;
+
+    DC_COMMON_ASSERT(task != nullptr);
+    DC_COMMON_ASSERT(task->t_std_idx >= 0);
+    DC_COMMON_ASSERT(task->t_std_idx < (int)task->t_server_info_arr.size());
+    DC_COMMON_ASSERT(dir_full_path != nullptr);
+    DC_COMMON_ASSERT(task->t_server_info_arr.size() == content_list.size());
+
+    // 一次发很多目录!
+    dir_q_.push_back({std::string(dir_full_path), json_idx});
+
+    if (dir_q_.size() > dir_batch_size) {
+        // 就一次性把目录都发完
+        // TODO 检查所有的这些目录的属性
+
+        dir_q_.clear();
+    }
+
+    return ret;
+}
+
+dc_common_code_t dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task, const char *path, int depth,
+                                                   std::vector<dc_content_t *> &content_list) {
     dc_common_code_t ret = S_SUCCESS;
 
     DC_COMMON_ASSERT(task != nullptr);
     DC_COMMON_ASSERT(task->t_std_idx >= 0);
     DC_COMMON_ASSERT(task->t_std_idx < (int)task->t_server_info_arr.size());
+    DC_COMMON_ASSERT(task->t_server_info_arr.size() == content_list.size());
 
-    // 递归遍历目录
-    // 遍历目录下的所有文件
-    // 对于每个文件，都要执行一次exe_sql_job_for_file
-    // 对于每个文件，都要执行一次exe_sql_job_for_dir
-    // linux scan dir
+    DIR *d = nullptr;
+    struct dirent *dir = nullptr;
+    auto &json_array = task->t_compare_result_json["diffs"];
 
-    task->t_compare_result_json["diffs"].emplace_back();
-    wfrest::Json &dir_json = task->t_compare_result_json["diffs"].back();
-    dir_json["name"] = dir_path;
-    dir_json["is_dir"] = true;
-    ret = exe_sql_job_for_file(task, dir_path, true, dir_json);
-    LOG_CHECK_ERR_RETURN(ret);
+    auto get_parent_dir = [&depth, &path](void) -> std::string {
+        if (depth == 0) {
+            return ".";
+        }
 
-    DIR *d;
-    struct dirent *dir;
-    d = opendir(dir_path);
-    if (d) {
-        while ((dir = readdir(d)) != NULL) {
-            // check dir->d_type is a link?
-            if (dir->d_type == DT_LNK) {
+        std::string parent_dir = path;
+        if (parent_dir.back() == '/') {
+            parent_dir.pop_back();
+        }
+
+        auto pos = parent_dir.find_last_of('/');
+        if (pos == std::string::npos) {
+            return parent_dir;
+        }
+
+        return parent_dir.substr(pos);
+    };
+
+    d = opendir(path);
+    if (!d) {
+        LOG_ROOT_ERR(E_OS_ENV_OPEN, "task:%s open dir:%s failed", task->t_task_uuid.c_str(), path);
+        return E_OS_ENV_OPEN;
+    }
+
+    while ((dir = readdir(d)) != NULL) {
+        if (dir->d_type == DT_LNK) {
+            // 我们只比较目录和文件！
+            continue;
+        }
+
+        std::string new_path = std::string(path) + "/" + std::string(dir->d_name);
+
+        if (dir->d_type == DT_DIR) {
+            if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0) {
                 continue;
             }
 
-            if (dir->d_type == DT_DIR) {
-                if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0) {
-                    continue;
-                }
-                std::string new_path = std::string(dir_path) + "/" + std::string(dir->d_name);
-                ret = exe_sql_job_for_dir(task, new_path.c_str());
-                LOG_CHECK_ERR_RETURN(ret);
-            } else {
-                std::string new_path = std::string(dir_path) + "/" + std::string(dir->d_name);
+            json_array.emplace_back();
+            json_array.back()["name"] = dir->d_name;
+            json_array.back()["dir"] = get_parent_dir();
+            json_array.back()["is_dir"] = true;
+            json_array.back()["path"] = new_path;
 
-                task->t_compare_result_json["diffs"].emplace_back();
-                wfrest::Json &single_file_compare_result_json = task->t_compare_result_json["diffs"].back();
-                single_file_compare_result_json["name"] = dir->d_name;
-                single_file_compare_result_json["dir"] = dir_path;
+            ret = exe_sql_job_for_single_item_dir(task, new_path.c_str(), json_array.size() - 1, content_list);
+            LOG_CHECK_ERR(ret);
 
-                // use stat to check new_path is a file?
-                struct stat st;
-                if(stat(new_path.c_str(), &st) == -1) {
-                    LOG_ROOT_ERR(E_OS_ENV_STAT, "stat %s failed", new_path.c_str());
-                    return E_OS_ENV_STAT;
-                }
-
-                if (!S_ISREG(st.st_mode)) {
-                    continue;
-                }
-
-                ret = exe_sql_job_for_file(task,
-                                           new_path.c_str(),
-                                           false/*not_dir*/,
-                                           single_file_compare_result_json);
-                LOG_CHECK_ERR_RETURN(ret);
+            ret = exe_sql_job_for_dir(task, new_path.c_str(), depth + 1, content_list);
+            LOG_CHECK_ERR(ret);
+        } else {
+            struct stat st;
+            if (stat(new_path.c_str(), &st) == -1) {
+                LOG_ROOT_ERR(E_OS_ENV_STAT, "stat %s failed", new_path.c_str());
+                return E_OS_ENV_STAT;
             }
+
+            if (!S_ISREG(st.st_mode)) {
+                continue;
+            }
+
+            json_array.emplace_back();
+            json_array.back()["name"] = dir->d_name;
+            json_array.back()["dir"] = get_parent_dir();
+            json_array.back()["is_dir"] = false;
+            json_array.back()["path"] = new_path;
+
+            ret = exe_sql_job_for_single_item_file(task, new_path.c_str(), json_array.size() - 1, content_list);
+            LOG_CHECK_ERR_RETURN(ret);
         }
-        closedir(d);
     }
+
+    closedir(d);
 
     return S_SUCCESS;
 }
 
-// 注意，这里运行的都是block的请求
 // 注意，这里并不去管理task的生命周期，只是去执行task
-dc_common_code_t
-dc_compare_t::exe_sql_job(dc_api_task_t *task)
-{
+dc_common_code_t dc_compare_t::exe_sql_job1(dc_api_task_t *task, std::vector<dc_content_t *> &content_list) {
     dc_common_code_t ret = S_SUCCESS;
 
     DC_COMMON_ASSERT(task != nullptr);
@@ -333,42 +372,73 @@ dc_compare_t::exe_sql_job(dc_api_task_t *task)
 
     auto &std_server_info = task->t_server_info_arr[task->t_std_idx];
     auto &compare_file_path = std_server_info.c_path_to_compare;
-
-    std::vector<std::string> files_to_compare;
-
-    // 生成第一个比较item
-    files_to_compare.push_back(compare_file_path);
+    auto &json_array = task->t_compare_result_json["diffs"];
 
     struct stat file_stat;
 
     // 如果标装方stat出错!
     if (stat(compare_file_path.c_str(), &file_stat) != 0) {
-        // 直接用这个files_to_compare来完成后续的比较任务
-        // 我们就假设这个是一个单独的内容。只需要去拿属性!
-        // 其他比较方，不需要去遍历`compare_file_path`下面的内容什么的!
-        ret = exe_sql_job_for_files(task, files_to_compare);
-        LOG_CHECK_ERR(ret);
-    } else {
-        if (S_ISREG(file_stat.st_mode)) {
-            ret = exe_sql_job_for_files(task, files_to_compare);
-            LOG_CHECK_ERR(ret);
-            if (ret != S_SUCCESS) {
-                task->t_compare_result_json["errno"] = ret;
-                task->t_compare_result_json["error"] = dc_common_code_msg(ret);
-            }
-        } else if (S_ISDIR(file_stat.st_mode)) {
-            // 如果是目录，那么就需要一个文件一个文件地比，并且生成相应的结果
-            ret = exe_sql_job_for_dir(task);
-            LOG_CHECK_ERR(ret);
-            if (ret != S_SUCCESS) {
-                task->t_compare_result_json["errno"] = ret;
-                task->t_compare_result_json["error"] = dc_common_code_msg(ret);
-            }
-        } else {
-            // 如果是其他类型的文件，那么直接返回错误
-            task->t_compare_result_json["error"] = "not support file type:" +
-                                                   std::to_string(file_stat.st_mode);
+        // 标准方打开失败，那就不要再继续比较了
+        LOG_ROOT_ERR(E_OS_ENV_STAT, "task:%s stat %s failed", task->t_task_uuid.c_str(), compare_file_path.c_str());
+        return E_OS_ENV_STAT;
+    }
+
+    if (S_ISREG(file_stat.st_mode)) {
+        // 这里只需要比较单个的文件!
+        json_array.emplace_back();
+        ret = exe_sql_job_for_single_item_file(task, compare_file_path.c_str(), json_array.back(), content_list);
+        LOG_CHECK_ERR_RETURN(ret);
+
+        return ret;
+    }
+
+    if (S_ISDIR(file_stat.st_mode)) {
+        // 如果是目录，那么就需要一个文件一个文件地比，并且生成相应的结果
+        // std server 使用chdir跳到自己的basedir
+        int err = chdir(task->t_server_info_arr[task->t_std_idx].c_base_dir.c_str());
+        LOG_ROOT_ERR(E_OS_ENV_CHDIR, "task:%s chdir %s failed", task->t_task_uuid.c_str(),
+                     task->t_server_info_arr[task->t_std_idx].c_base_dir.c_str());
+
+        // server_info.base_dir + compare_file_path才是完整的绝对路径！
+        // 如果就是base_dir开始比较，那么compare_file_path = '.';
+        ret = exe_sql_job_for_dir(task, compare_file_path.c_str(), 0, content_list);
+        LOG_CHECK_ERR_RETURN(ret);
+
+        if (dir_q_.size() > 0) {
+            // TODO 把这里所有的目录一次性全部发掉
         }
+
+        return ret;
+    }
+
+    LOG_ROOT_ERR(E_NOT_SUPPORT_FILE_TYPE, "task:%s %s is not a file or dir, not support file type",
+                 task->t_task_uuid.c_str(), compare_file_path.c_str());
+    return E_NOT_SUPPORT_FILE_TYPE;
+}
+
+dc_common_code_t dc_compare_t::exe_sql_job(dc_api_task_t *task) {
+    DC_COMMON_ASSERT(task != nullptr);
+
+    // generate dc_content list
+    dc_common_code_t ret = S_SUCCESS;
+    std::vector<dc_content_t *> dc_content_list;
+    for (int i = 0; i < task->t_server_info_arr.size(); i++) {
+        auto &server_info = task->t_server_info_arr[i];
+        if (i == task->t_std_idx) {
+            auto local_content_reader = new dc_content_local_t(&server_info);
+            dc_content_list.emplace_back(local_content_reader);
+        } else {
+            auto remote_content_reader = new dc_content_remote_t(&server_info);
+            dc_content_list.emplace_back(remote_content_reader);
+        }
+    }
+
+    ret = exe_sql_job1(task, dc_content_list);
+    LOG_CHECK_ERR(ret);
+
+    for (auto &d : dc_content_list) {
+        DC_COMMON_ASSERT(d);
+        delete d;
     }
 
     return ret;
@@ -383,7 +453,7 @@ dc_common_code_t dc_compare_t::execute() {
         }
 
         dc_api_task_t *task = nullptr;
-        bool has_task = task_q_.read_once((void**)&task);
+        bool has_task = task_q_.read_once((void **)&task);
         if (!has_task) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
@@ -399,8 +469,14 @@ dc_common_code_t dc_compare_t::execute() {
 
         ret = exe_sql_job(task);
         LOG_CHECK_ERR(ret);
-        out_q_.write((void*)task);
-    } // end while
+
+        if (ret != S_SUCCESS) {
+            task->t_compare_result_json["errno"] = ret;
+            task->t_compare_result_json["error"] = dc_common_code_msg(ret);
+        }
+
+        out_q_.write((void *)task);
+    }  // end while
 
     return S_SUCCESS;
 }

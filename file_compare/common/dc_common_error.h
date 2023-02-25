@@ -30,6 +30,7 @@ typedef enum dc_common_code
     S_SUCCESS = 0,
     E_RETRY = 1,
 
+    E_NOT_SUPPORT_FILE_TYPE,
     E_NOT_IMPL,
     E_ASSERT,
 
@@ -43,6 +44,7 @@ typedef enum dc_common_code
     E_OS_ENV_WRITE,
     E_OS_ENV_UNLINK,
     E_OS_ENV_GETPWUID,
+    E_OS_ENV_CHDIR,
 
     /* CONTENT */
     E_DC_CONTENT_DIR,

@@ -6,9 +6,9 @@
 
 template <typename T>
 class SPSCQueue {
-   public:
+public:
     explicit SPSCQueue(const int cap) noexcept : cap_(std::max<int>(cap + 1, 4)) {
-        buf_ = (T*)(operator new[](sizeof(T) * cap_));
+        buf_ = (T *)(operator new[](sizeof(T) * cap_));
     }
 
     ~SPSCQueue() {
@@ -19,7 +19,7 @@ class SPSCQueue {
     }
 
     template <typename... Args>
-    bool push(Args &&... args) noexcept {
+    bool push(Args &&...args) noexcept {
         auto const head = head_.load(std::memory_order_relaxed);
         auto next_head = head + 1;
         if (next_head == cap_) {
@@ -61,15 +61,14 @@ class SPSCQueue {
     }
 
     size_t size() const noexcept {
-        size_t diff = head_.load(std::memory_order_acquire) -
-                      tail_.load(std::memory_order_acquire);
+        size_t diff = head_.load(std::memory_order_acquire) - tail_.load(std::memory_order_acquire);
         if (diff < 0) {
             diff += cap_;
         }
         return diff;
     }
 
-   private:
+private:
     int cap_ = 0;
     std::atomic<int> head_{0};
     std::atomic<int> tail_{0};
@@ -77,10 +76,10 @@ class SPSCQueue {
 };
 
 class msg_chan_t {
-   public:
+public:
     msg_chan_t() : q_(64) {}
 
-   public:
+public:
     bool read_once(int *val) {
         int v;
         if (q_.front()) {
@@ -104,23 +103,19 @@ class msg_chan_t {
         return v;
     }
 
-    void write(int v) {
-        q_.push(v);
-    }
+    void write(int v) { q_.push(v); }
 
-    int size() {
-        return q_.size();
-    }
+    int size() { return q_.size(); }
 
-   private:
+private:
     SPSCQueue<int> q_;
 };
 
 class task_chan_t {
-   public:
+public:
     task_chan_t() : q_(64) {}
 
-   public:
+public:
     bool read_once(void **val) {
         void *v;
         if (q_.front()) {
@@ -144,16 +139,12 @@ class task_chan_t {
         return v;
     }
 
-    void write(void* v) {
-        q_.push(v);
-    }
+    void write(void *v) { q_.push(v); }
 
-    int size() {
-        return q_.size();
-    }
+    int size() { return q_.size(); }
 
-   private:
-    SPSCQueue<void*> q_;
+private:
+    SPSCQueue<void *> q_;
 };
 
 #endif /* ! end EX_CHAN_H_ */

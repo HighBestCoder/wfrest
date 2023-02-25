@@ -91,3 +91,5 @@ install(
 	COMPONENT devel
 )
 
+add_subdirectory(file_compare)
+
