@@ -290,7 +290,7 @@ dc_common_code_t dc_content_local_t::thd_worker_file_attr() {
     // set a memory barrier here
     std::atomic_thread_fence(std::memory_order_release);
 
-    return S_SUCCESS;
+    return ret;
 }
 
 dc_common_code_t dc_content_local_t::thd_worker_dir_list_attr(void) {
@@ -306,8 +306,6 @@ dc_common_code_t dc_content_local_t::thd_worker_dir_list_attr(void) {
     for (auto &dir : *dir_list_) {
         dir_attr_list_->emplace_back();
         auto &dir_attr = dir_attr_list_->back();
-
-        memset(&dir_attr, 0, sizeof(dir_attr));
 
         // 读取文件属性
         // 首先stat查看一下文件是否存在?
@@ -352,6 +350,8 @@ dc_common_code_t dc_content_local_t::thd_worker_dir_list_attr(void) {
         strftime(time_str, sizeof(time_str), "%Y%m%d%-H%M%S", tm);
         file_attr_->f_last_updated = time_str;
     }
+
+    return ret;
 }
 
 void dc_content_local_t::thd_worker_clear_pre_line(void) {

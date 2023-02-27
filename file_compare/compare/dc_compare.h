@@ -51,6 +51,8 @@ private:
     dc_common_code_t exe_sql_job(dc_api_task_t *task);
 
 private:
+    dc_common_code_t exe_sql_job_for_single_item_dir1(dc_api_task_t *task, std::vector<dc_content_t *> &content_list);
+
     std::vector<std::pair<std::string, int>> dir_q_;
 
 private:

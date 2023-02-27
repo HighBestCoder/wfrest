@@ -59,6 +59,112 @@ dc_common_code_t dc_compare_t::get(wfrest::Json &result_json) {
     return S_SUCCESS;
 }
 
+static void assign_attr_to_json(wfrest::Json &json, const std::string &center_name, dc_file_attr_t &attr,
+                                const std::string &md5) {
+    std_server_file_info["server_name"] = center_name;
+    std_server_file_info["size"] = attr.f_size;
+    std_server_file_info["owner"] = attr.f_owner;
+    std_server_file_info["last_updated"] = attr.f_last_updated;
+    std_server_file_info["mode"] = attr.f_mode;
+    std_server_file_info["is_standard"] = true;
+    std_server_file_info["md5"] = md5;
+}
+
+// 返回值true表示往json里面添加了内容
+// 返回值false表示没有往json里面添加内容
+static bool compare_assign_attr_to_json(const dc_file_attr_t &std, dc_file_attr_t &other, wfrest::Json &json,
+                                        const std::string &center_name) {
+    if (std.f_code != S_SUCCESS) {
+        assign_attr_to_json(json, center_name, other, other_md5);
+        return true;
+    }
+
+    if (other.f_code != S_SUCCESS) {
+        json["errno"] = other.f_code;
+        json["error"] = dc_common_code_msg(other.f_code);
+        return true;
+    }
+
+    DC_COMMON_ASSERT(std.f_code == S_SUCCESS);
+    DC_COMMON_ASSERT(other.f_code == S_SUCCESS);
+
+    // 如果完全一样!
+    if (std.compare(other)) {
+        return false;
+    }
+
+    // 如果不一样!
+    json["server_name"] = center_name;
+    // if f_size is not the same
+    if (std.f_size != other.f_size) {
+        json["size"] = other.f_size;
+    }
+    // if f_owner is not the same
+    if (std.f_owner != other.f_owner) {
+        json["owner"] = other.f_owner;
+    }
+    // if f_last_updated is not the same
+    if (std.f_last_updated != other.f_last_updated) {
+        json["last_updated"] = other.f_last_updated;
+    }
+    // if f_mode is not the same
+    if (std.f_mode != other.f_mode) {
+        json["mode"] = other.f_mode;
+    }
+
+    return true;
+}
+
+// 返回值true表示往json里面添加了内容
+// 返回值false表示没有往json里面添加内容
+static bool compare_assign_attr_to_json(const dc_file_attr_t &std, dc_file_attr_t &other, wfrest::Json &json,
+                                        const std::string &center_name, const std::string &std_md5,
+                                        const std::string &other_md5) {
+    if (std.f_code != S_SUCCESS) {
+        assign_attr_to_json(json, center_name, other, other_md5);
+        return true;
+    }
+
+    if (other.f_code != S_SUCCESS) {
+        json["errno"] = other.f_code;
+        json["error"] = dc_common_code_msg(other.f_code);
+        return true;
+    }
+
+    DC_COMMON_ASSERT(std.f_code == S_SUCCESS);
+    DC_COMMON_ASSERT(other.f_code == S_SUCCESS);
+
+    // 如果完全一样!
+    if (std.compare(other)) {
+        return false;
+    }
+
+    // 如果不一样!
+    json["server_name"] = center_name;
+    // if f_size is not the same
+    if (std.f_size != other.f_size) {
+        json["size"] = other.f_size;
+    }
+    // if f_owner is not the same
+    if (std.f_owner != other.f_owner) {
+        json["owner"] = other.f_owner;
+    }
+    // if f_last_updated is not the same
+    if (std.f_last_updated != other.f_last_updated) {
+        json["last_updated"] = other.f_last_updated;
+    }
+    // if f_mode is not the same
+    if (std.f_mode != other.f_mode) {
+        json["mode"] = other.f_mode;
+    }
+    // if f_md5 is not the same
+    if (std_md5 != other_md5) {
+        json["md5"] = other_md5;
+    }
+
+    return true;
+}
+
 /*
  * A为标准方!
  * A: 需要读取B, C上文件的某一行参与比较
@@ -189,14 +295,8 @@ dc_common_code_t dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task, const c
     for (int i = 0; i < task_number; i++) {
         if (i == std_idx) {
             wfrest::Json std_server_file_info;
-            std_server_file_info["server_name"] = task->t_server_info_arr[i].c_center;
-            std_server_file_info["size"] = file_attr_list[i].f_size;
-            std_server_file_info["owner"] = file_attr_list[i].f_owner;
-            std_server_file_info["last_updated"] = file_attr_list[i].f_last_updated;
-            std_server_file_info["mode"] = file_attr_list[i].f_mode;
-            std_server_file_info["is_standard"] = true;
-            std_server_file_info["md5"] = file_md5_list[i];
-
+            assign_attr_to_json(std_server_file_info, task->t_server_info_arr[i].c_center, file_attr_list[i],
+                                file_md5_list[i]);
             single_file_compare_result_json["servers"].push_back(std_server_file_info);
         } else {
             // compare the size, owner, last_updated, mode, md5
@@ -249,6 +349,138 @@ dc_common_code_t dc_compare_t::exe_sql_job_for_single_item_file(dc_api_task_t *t
     // 一次发一个文件!
 }
 
+dc_common_code_t dc_compare_t::exe_sql_job_for_single_item_dir1(dc_api_task_t *task,
+                                                                std::vector<dc_content_t *> &content_list) {
+    if (dir_q_.empty()) {
+        return S_SUCCESS;
+    }
+
+    // 就一次性把目录都发完
+    std::vector<std::string> dir_list;
+    for (auto &dir : dir_q_) {
+        dir_list.push_back(dir.first);
+    }
+
+    DC_COMMON_ASSERT(task != nullptr);
+    DC_COMMON_ASSERT(task->t_std_idx >= 0);
+    DC_COMMON_ASSERT(task->t_std_idx < (int)task->t_server_info_arr.size());
+    DC_COMMON_ASSERT(task->t_server_info_arr.size() == content_list.size());
+
+    std::vector<std::vector<dc_file_attr_t>> dir_attr_list(content_list.size());
+    std::vector<bool> has_done(task->t_server_info_arr.size(), false);
+    std::vector<int> has_failed(task->t_server_info_arr.size(), false);
+    int has_done_cnt = 0;
+
+    for (auto i = 0; i < content_list.size(); i++) {
+        auto &content = content_list[i];
+        auto ret = content->do_dir_list_attr(&dir_list, &dir_attr_list[i]);
+        LOG_CHECK_ERR(ret);
+        if (ret != S_SUCCESS) {
+            has_done[i] = true;
+            has_done_cnt++;
+            has_failed[i] = ret;
+        }
+    }
+
+    while (has_done_cnt < content_list.size()) {
+        for (auto i = 0; i < content_list.size(); i++) {
+            if (has_done[i]) {
+                continue;
+            }
+
+            auto &content = content_list[i];
+            auto ret = content->get_dir_list_attr();
+            if (ret == E_DC_CONTENT_RETRY) {
+                continue;
+            }
+
+            has_done[i] = true;
+            has_done_cnt++;
+            LOG_CHECK_ERR(ret);
+
+            if (ret != S_SUCCESS) {
+                has_failed[i] = ret;
+            }
+        }
+    }
+
+    // 这里应该是拿到所有的目录的属性了
+    // 我们遍历dir_q_中的所有目录
+    for (auto dir_idx = 0; dir_idx < dir_q_.size(); dir_idx++) {
+        const auto &dir_path = dir_q_[dir_idx].first;
+        const auto &dir_json_idx = dir_q_[dir_idx].second;
+        DC_COMMON_ASSERT(dir_json_idx >= 0);
+        DC_COMMON_ASSERT(dir_json_idx < (int)task->t_compare_result_json.size());
+
+        auto &ret_json = task->t_compare_result_json[dir_json_idx];
+
+        wfrest::Json server_json_list = nlohmann::json::array();
+
+        DC_COMMON_ASSERT(task->t_std_idx >= 0);
+        DC_COMMON_ASSERT(task->t_std_idx < (int)dir_attr_list.size());
+        DC_COMMON_ASSERT(dir_attr_list.size() == has_failed.size());
+
+        // 首先我们要为这个json生成std的结果!
+        wfrest::Json std_cur_dir_json;
+        dc_file_attr_t std_cur_dir_attr;
+
+        auto &std_dir_attr = dir_attr_list[task->t_std_idx];
+        if (dir_idx >= std_dir_attr.size()) {
+            std_cur_dir_json["errno"] = has_failed[task->t_std_idx];
+            std_cur_dir_json["error"] = dc_common_code_to_str(has_failed[task->t_std_idx]);
+            std_cur_dir_attr.f_code = has_failed[task->t_std_idx];
+        } else {
+            auto &std_dir_attr_item = std_dir_attr[dir_idx];
+            std_cur_dir_json["server_name"] = task->t_server_info_arr[task->t_std_idx].c_center;
+            std_cur_dir_json["size"] = file_attr_list[task->t_std_idx].f_size;
+            std_cur_dir_json["owner"] = file_attr_list[task->t_std_idx].f_owner;
+            std_cur_dir_json["last_updated"] = file_attr_list[task->t_std_idx].f_last_updated;
+            std_cur_dir_json["mode"] = file_attr_list[task->t_std_idx].f_mode;
+            std_cur_dir_json["is_standard"] = true;
+            std_cur_dir_json["md5"] = file_md5_list[task->t_std_idx];
+
+            std_cur_dir_attr = std_dir_attr_item;
+        }
+
+        for (auto server_idx = 0; server_idx < content_list.size(); server_idx++) {
+            if (server_idx == task->t_std_idx) {
+                continue;
+            }
+
+            // 尝试取出这个server在dir_idx的结果
+            auto &server_dir_attr = dir_attr_list[server_idx];
+            wfrest::Json other_cur_dir_json;
+            if (dir_idx >= server_dir_attr.size()) {
+                // 那么json在这里需要说明这个server在这里出错了!
+                other_cur_dir_json["errno"] = has_failed[server_idx];
+                other_cur_dir_json["error"] = dc_common_code_to_str(has_failed[server_idx]);
+            } else {
+                auto &server_dir_attr_item = server_dir_attr[dir_idx];
+
+                if (std_cur_dir_attr.compare(server_dir_attr_item)) {
+                    // 说明这个server的结果和std的结果是一样的
+                    // 那么我们就不需要再生成这个json了
+                    continue;
+                }
+
+                other_cur_dir_json["server_name"] = task->t_server_info_arr[server_idx].c_center;
+                other_cur_dir_json["size"] = file_attr_list[server_idx].f_size;
+                other_cur_dir_json["owner"] = file_attr_list[server_idx].f_owner;
+                other_cur_dir_json["last_updated"] = file_attr_list[server_idx].f_last_updated;
+                other_cur_dir_json["mode"] = file_attr_list[server_idx].f_mode;
+                other_cur_dir_json["is_standard"] = false;
+                other_cur_dir_json["md5"] = file_md5_list[server_idx];
+            }
+        }
+
+        ret_json["servers"] = server_json_list;
+    }
+
+    dir_q_.clear();
+
+    return S_SUCCESS;
+}
+
 dc_common_code_t dc_compare_t::exe_sql_job_for_single_item_dir(dc_api_task_t *task, const char *dir_full_path,
                                                                const int json_idx,
                                                                std::vector<dc_content_t *> &content_list) {
@@ -265,10 +497,8 @@ dc_common_code_t dc_compare_t::exe_sql_job_for_single_item_dir(dc_api_task_t *ta
     dir_q_.push_back({std::string(dir_full_path), json_idx});
 
     if (dir_q_.size() > dir_batch_size) {
-        // 就一次性把目录都发完
-        // TODO 检查所有的这些目录的属性
-
-        dir_q_.clear();
+        ret = exe_sql_job_for_single_item_dir1(task, content_list);
+        LOG_CHECK_ERR_RETURN(ret);
     }
 
     return ret;
@@ -328,7 +558,6 @@ dc_common_code_t dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task, const ch
             json_array.back()["name"] = dir->d_name;
             json_array.back()["dir"] = get_parent_dir();
             json_array.back()["is_dir"] = true;
-            json_array.back()["path"] = new_path;
 
             ret = exe_sql_job_for_single_item_dir(task, new_path.c_str(), json_array.size() - 1, content_list);
             LOG_CHECK_ERR(ret);
@@ -424,7 +653,7 @@ dc_common_code_t dc_compare_t::exe_sql_job(dc_api_task_t *task) {
     // generate dc_content list
     dc_common_code_t ret = S_SUCCESS;
     std::vector<dc_content_t *> dc_content_list;
-    for (int i = 0; i < task->t_server_info_arr.size(); i++) {
+    for (int i = 0; i < (int)task->t_server_info_arr.size(); i++) {
         auto &server_info = task->t_server_info_arr[i];
         if (i == task->t_std_idx) {
             auto local_content_reader = new dc_content_local_t(&server_info);
