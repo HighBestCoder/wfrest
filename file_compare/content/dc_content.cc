@@ -84,6 +84,7 @@ dc_common_code_t dc_content_local_t::do_dir_list_attr(const std::vector<std::str
     // 不能先发送消息再设置file_path_
     // 先设置file_path_
     dir_attr_list_ = attr_list;
+    dir_list_ = dir_list;
     // 然后发送命令
     cmd_q_.write(CMD_TYPE_DIR_LIST_ATTR);
 
@@ -292,7 +293,66 @@ dc_common_code_t dc_content_local_t::thd_worker_file_attr() {
     return S_SUCCESS;
 }
 
-dc_common_code_t dc_content_local_t::thd_worker_dir_list_attr(void) {}
+dc_common_code_t dc_content_local_t::thd_worker_dir_list_attr(void) {
+    dc_common_code_t ret = S_SUCCESS;
+
+    DC_COMMON_ASSERT(dir_list_ != nullptr);
+    DC_COMMON_ASSERT(dir_attr_list_ != nullptr);
+
+    if (dir_list_->empty()) {
+        return ret;
+    }
+
+    for (auto &dir : *dir_list_) {
+        dir_attr_list_->emplace_back();
+        auto &dir_attr = dir_attr_list_->back();
+
+        memset(&dir_attr, 0, sizeof(dir_attr));
+
+        // 读取文件属性
+        // 首先stat查看一下文件是否存在?
+        struct stat file_stat;
+        int stat_ret = stat(file_path_.c_str(), &file_stat);
+        if (stat_ret != 0) {
+            LOG_ROOT_ERR(E_OS_ENV_STAT, "stat file failed, file_path=%s, errno=%d, errstr=%s", file_path_.c_str(),
+                         errno, strerror(errno));
+            dir_attr.f_code = E_OS_ENV_STAT;
+            continue;
+        }
+
+        // if the file is a directory
+        // return error, here just support file
+        DC_COMMON_ASSERT(S_ISDIR(file_stat.st_mode));
+
+        // get file mode, then convert st_mode to string
+        char mode_str[32] = {0};
+        snprintf(mode_str, sizeof(mode_str), "%o", file_stat.st_mode & 0777);
+        file_attr_->f_mode = mode_str;
+
+        // get owner name by st_uid
+        struct passwd *pwd = getpwuid(file_stat.st_uid);
+        if (pwd == nullptr) {
+            LOG_ROOT_ERR(E_OS_ENV_GETPWUID, "getpwuid failed, errno=%d, errstr=%s", errno, strerror(errno));
+            dir_attr.f_code = E_OS_ENV_GETPWUID;
+            continue;
+        }
+
+        file_attr_->f_owner = pwd->pw_name;
+
+        // get file last updated time, convert st_mtime to string
+        char time_str[32] = {0};
+        struct tm *tm = localtime(&file_stat.st_mtime);
+        if (tm == nullptr) {
+            LOG_ROOT_ERR(E_OS_ENV_LOCALTIME, "localtime failed, errno=%d, errstr=%s", errno, strerror(errno));
+            dir_attr.f_code = E_OS_ENV_LOCALTIME;
+            continue;
+        }
+
+        // format tm to string
+        strftime(time_str, sizeof(time_str), "%Y%m%d%-H%M%S", tm);
+        file_attr_->f_last_updated = time_str;
+    }
+}
 
 void dc_content_local_t::thd_worker_clear_pre_line(void) {
     if (file_pre_line_.length() > DC_CONTENT_FILE_READ_BUF) {

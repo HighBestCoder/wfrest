@@ -19,9 +19,11 @@ typedef struct dc_file_attr {
     std::string f_mode;          // 文件的权限
     std::string f_owner;         // 文件拥有者
     std::string f_last_updated;  // 文件最后更新时间
+    dc_common_code_t f_code;     // 文件的错误码
 
     bool compare(const dc_file_attr &f) const {
-        return (f_size == f.f_size && f_mode == f.f_mode && f_owner == f.f_owner && f_last_updated == f.f_last_updated);
+        return (f_code == f.f_code && f_size == f.f_size && f_mode == f.f_mode && f_owner == f.f_owner &&
+                f_last_updated == f.f_last_updated);
     }
 } dc_file_attr_t;
 
@@ -50,7 +52,7 @@ public:
     // 整个文件的md5
     virtual dc_common_code_t get_file_md5(std::string &md5_out) = 0;
 
-    virtual dc_common_code_t do_dir_list_attr(const std::vector<std::string> &dir_list,
+    virtual dc_common_code_t do_dir_list_attr(const std::vector<std::string> *dir_list,
                                               std::vector<dc_file_attr_t> *attr_list /*OUT*/) = 0;
     virtual dc_common_code_t get_dir_list_attr() = 0;
 };
@@ -79,11 +81,11 @@ public:
     virtual dc_common_code_t get_file_md5(std::string &md5_out) override;
 
     virtual dc_common_code_t do_dir_list_attr(const std::vector<std::string> *dir_list,
-                                              std::vector<dc_file_attr_t> *attr_list /*OUT*/) = 0;
-    virtual dc_common_code_t get_dir_list_attr() = 0;
+                                              std::vector<dc_file_attr_t> *attr_list /*OUT*/) override;
+    virtual dc_common_code_t get_dir_list_attr() override;
 
 private:
-    std::vector<std::string> *dir_list_{nullptr};
+    const std::vector<std::string> *dir_list_{nullptr};
     std::vector<dc_file_attr_t> *dir_attr_list_{nullptr};
 
 private:
@@ -183,6 +185,10 @@ public:
     virtual dc_common_code_t get_file_content() override;
 
     virtual dc_common_code_t get_file_md5(std::string &md5_out) override;
+
+    virtual dc_common_code_t do_dir_list_attr(const std::vector<std::string> *dir_list,
+                                              std::vector<dc_file_attr_t> *attr_list /*OUT*/) override;
+    virtual dc_common_code_t get_dir_list_attr() override;
 };
 
 #endif /* ! _DC_CONTENT_H_ */

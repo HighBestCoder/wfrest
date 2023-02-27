@@ -45,6 +45,7 @@ typedef enum dc_common_code
     E_OS_ENV_UNLINK,
     E_OS_ENV_GETPWUID,
     E_OS_ENV_CHDIR,
+    E_OS_ENV_LOCALTIME,
 
     /* CONTENT */
     E_DC_CONTENT_DIR,

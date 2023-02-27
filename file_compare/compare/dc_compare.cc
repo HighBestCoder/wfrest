@@ -396,8 +396,10 @@ dc_common_code_t dc_compare_t::exe_sql_job1(dc_api_task_t *task, std::vector<dc_
         // 如果是目录，那么就需要一个文件一个文件地比，并且生成相应的结果
         // std server 使用chdir跳到自己的basedir
         int err = chdir(task->t_server_info_arr[task->t_std_idx].c_base_dir.c_str());
-        LOG_ROOT_ERR(E_OS_ENV_CHDIR, "task:%s chdir %s failed", task->t_task_uuid.c_str(),
-                     task->t_server_info_arr[task->t_std_idx].c_base_dir.c_str());
+        if (err) {
+            LOG_ROOT_ERR(E_OS_ENV_CHDIR, "task:%s chdir %s failed errno:%d error:%s", task->t_task_uuid.c_str(),
+                         task->t_server_info_arr[task->t_std_idx].c_base_dir.c_str(), errno, strerror(errno));
+        }
 
         // server_info.base_dir + compare_file_path才是完整的绝对路径！
         // 如果就是base_dir开始比较，那么compare_file_path = '.';
