@@ -1,25 +1,21 @@
 #include "dc_content.h"
+
+#include <fcntl.h>
+#include <openssl/sha.h>  // sha1
+#include <pwd.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 #include "dc_common_error.h"
 #include "dc_common_log.h"
 #include "dc_common_trace_log.h"
 
-#include <openssl/sha.h>                // sha1
+#define DC_CONTENT_MEM_ALIGN 8192          // 8K
+#define DC_CONTENT_FILE_READ_BUF 16777216  // 读文件的缓冲区大小 16M
 
-#include <string.h>
-
-#include <sys/types.h>
-#include <pwd.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
-
-#define DC_CONTENT_MEM_ALIGN            8192                // 8K
-#define DC_CONTENT_FILE_READ_BUF        16777216            // 读文件的缓冲区大小 16M
-
-dc_content_local_t::dc_content_local_t(dc_api_ctx_default_server_info_t *server) :
-                    dc_content_t(server)
-{
+dc_content_local_t::dc_content_local_t(dc_api_ctx_default_server_info_t *server) : dc_content_t(server) {
     server_ = server;
 
     // 创建一个线程去处理命令
@@ -55,10 +51,7 @@ dc_content_local_t::~dc_content_local_t() {
     DC_COMMON_ASSERT(file_read_fd_ == -1);
 }
 
-dc_common_code_t
-dc_content_local_t::do_file_attr(const std::string &path,
-                                 dc_file_attr_t *attr /*OUT*/)
-{
+dc_common_code_t dc_content_local_t::do_file_attr(const std::string &path, dc_file_attr_t *attr /*OUT*/) {
     // 注意下面两个顺序不能乱!
     // 不能先发送消息再设置file_path_
     // 先设置file_path_
@@ -70,9 +63,7 @@ dc_content_local_t::do_file_attr(const std::string &path,
     return S_SUCCESS;
 }
 
-dc_common_code_t
-dc_content_local_t::get_file_attr(void)
-{
+dc_common_code_t dc_content_local_t::get_file_attr(void) {
     bool has_read_msg = false;
     int ret = 0;
 
@@ -87,11 +78,35 @@ dc_content_local_t::get_file_attr(void)
     return S_SUCCESS;
 }
 
-dc_common_code_t
-dc_content_local_t::do_file_content(const std::string &path,
-                                    std::vector<std::string> *lines_sha1 /*OUT*/,
-                                    int *empty_lines /*OUT*/)
-{
+dc_common_code_t dc_content_local_t::do_dir_list_attr(const std::vector<std::string> *dir_list,
+                                                      std::vector<dc_file_attr_t> *attr_list /*OUT*/) {
+    // 注意下面两个顺序不能乱!
+    // 不能先发送消息再设置file_path_
+    // 先设置file_path_
+    dir_attr_list_ = attr_list;
+    // 然后发送命令
+    cmd_q_.write(CMD_TYPE_DIR_LIST_ATTR);
+
+    return S_SUCCESS;
+}
+dc_common_code_t dc_content_local_t::get_dir_list_attr() {
+    bool has_read_msg = false;
+    int ret = 0;
+
+    has_read_msg = ret_q_.read_once(&ret);
+    if (!has_read_msg) {
+        return E_DC_CONTENT_RETRY;
+    }
+
+    LOG(DC_COMMON_LOG_INFO, "center:%s return dir_attr ret code:%d", server_->c_center.c_str(), ret);
+
+    LOG_CHECK_ERR_RETURN((dc_common_code_t)ret);
+    return S_SUCCESS;
+}
+
+dc_common_code_t dc_content_local_t::do_file_content(const std::string &path,
+                                                     std::vector<std::string> *lines_sha1 /*OUT*/,
+                                                     int *empty_lines /*OUT*/) {
     // 注意下面两个顺序不能乱!
     // 不能先发送消息再设置file_path_
     // 先设置file_path_
@@ -109,9 +124,7 @@ dc_content_local_t::do_file_content(const std::string &path,
     return S_SUCCESS;
 }
 
-dc_common_code_t
-dc_content_local_t::get_file_content()
-{
+dc_common_code_t dc_content_local_t::get_file_content() {
     bool has_read_msg = false;
     int ret = 0;
 
@@ -183,9 +196,7 @@ dc_content_local_t::get_file_content()
     return E_DC_CONTENT_RETRY;
 }
 
-dc_common_code_t
-dc_content_local_t::thd_worker()
-{
+dc_common_code_t dc_content_local_t::thd_worker() {
     int cmd = CMD_TYPE_NONE;
     bool has_cmd = false;
     dc_common_code_t ret = S_SUCCESS;
@@ -196,6 +207,11 @@ dc_content_local_t::thd_worker()
             if (cmd == CMD_TYPE_FILE_ATTR) {
                 // file_attr只会往ret_q_写入一次消息
                 ret = thd_worker_file_attr();
+                LOG_CHECK_ERR(ret);
+                ret_q_.write((int)ret);
+            } else if (cmd == CMD_TYPE_DIR_LIST_ATTR) {
+                // dir_list_attr只会往ret_q_写入一次消息
+                ret = thd_worker_dir_list_attr();
                 LOG_CHECK_ERR(ret);
                 ret_q_.write((int)ret);
             } else if (cmd == CMD_TYPE_FILE_CONTENT_PREPARE) {
@@ -217,9 +233,7 @@ dc_content_local_t::thd_worker()
     return S_SUCCESS;
 }
 
-dc_common_code_t
-dc_content_local_t::thd_worker_file_attr()
-{
+dc_common_code_t dc_content_local_t::thd_worker_file_attr() {
     // 读取文件属性
     dc_common_code_t ret = S_SUCCESS;
 
@@ -231,10 +245,7 @@ dc_content_local_t::thd_worker_file_attr()
     struct stat file_stat;
     int stat_ret = stat(file_path_.c_str(), &file_stat);
     if (stat_ret != 0) {
-        LOG_ROOT_ERR(E_OS_ENV_STAT,
-                     "stat file failed, file_path=%s, errno=%d, errstr=%s",
-                     file_path_.c_str(),
-                     errno,
+        LOG_ROOT_ERR(E_OS_ENV_STAT, "stat file failed, file_path=%s, errno=%d, errstr=%s", file_path_.c_str(), errno,
                      strerror(errno));
         return E_OS_ENV_STAT;
     }
@@ -256,10 +267,7 @@ dc_content_local_t::thd_worker_file_attr()
     // get owner name by st_uid
     struct passwd *pwd = getpwuid(file_stat.st_uid);
     if (pwd == nullptr) {
-        LOG_ROOT_ERR(E_OS_ENV_GETPWUID,
-                     "getpwuid failed, errno=%d, errstr=%s",
-                     errno,
-                     strerror(errno));
+        LOG_ROOT_ERR(E_OS_ENV_GETPWUID, "getpwuid failed, errno=%d, errstr=%s", errno, strerror(errno));
         return E_OS_ENV_GETPWUID;
     }
 
@@ -271,10 +279,7 @@ dc_content_local_t::thd_worker_file_attr()
     char time_str[32] = {0};
     struct tm *tm = localtime(&file_stat.st_mtime);
     if (tm == nullptr) {
-        LOG_ROOT_ERR(E_OS_ENV_NOT_FOUND,
-                     "localtime failed, errno=%d, errstr=%s",
-                     errno,
-                     strerror(errno));
+        LOG_ROOT_ERR(E_OS_ENV_NOT_FOUND, "localtime failed, errno=%d, errstr=%s", errno, strerror(errno));
         return E_OS_ENV_NOT_FOUND;
     }
     // format tm to string
@@ -287,9 +292,9 @@ dc_content_local_t::thd_worker_file_attr()
     return S_SUCCESS;
 }
 
-void
-dc_content_local_t::thd_worker_clear_pre_line(void)
-{
+dc_common_code_t dc_content_local_t::thd_worker_dir_list_attr(void) {}
+
+void dc_content_local_t::thd_worker_clear_pre_line(void) {
     if (file_pre_line_.length() > DC_CONTENT_FILE_READ_BUF) {
         // use swap to free memory of file_pre_line_
         std::string temp;
@@ -299,9 +304,7 @@ dc_content_local_t::thd_worker_clear_pre_line(void)
     }
 }
 
-dc_common_code_t
-dc_content_local_t::thd_worker_append_to_pre_line(const uint8_t *s, const int len)
-{
+dc_common_code_t dc_content_local_t::thd_worker_append_to_pre_line(const uint8_t *s, const int len) {
     if (len == 0) {
         return S_SUCCESS;
     }
@@ -315,9 +318,7 @@ dc_content_local_t::thd_worker_append_to_pre_line(const uint8_t *s, const int le
     return S_SUCCESS;
 }
 
-bool
-dc_content_local_t::thd_worker_check_is_empty_line(const uint8_t *s, const int len)
-{
+bool dc_content_local_t::thd_worker_check_is_empty_line(const uint8_t *s, const int len) {
     int i = 0;
 
     DC_COMMON_ASSERT(s != nullptr);
@@ -332,9 +333,7 @@ dc_content_local_t::thd_worker_check_is_empty_line(const uint8_t *s, const int l
     return true;
 }
 
-dc_common_code_t
-dc_content_local_t::thd_worker_compute_sha1_of_single_line(const uint8_t *s, const int len)
-{
+dc_common_code_t dc_content_local_t::thd_worker_compute_sha1_of_single_line(const uint8_t *s, const int len) {
     const uint8_t *str_to_compute = s;
     int str_to_compute_len = len;
 
@@ -344,7 +343,7 @@ dc_content_local_t::thd_worker_compute_sha1_of_single_line(const uint8_t *s, con
     if (!file_pre_line_.empty()) {
         // append to line
         thd_worker_append_to_pre_line(s, len);
-        str_to_compute = (const uint8_t*)file_pre_line_.c_str();
+        str_to_compute = (const uint8_t *)file_pre_line_.c_str();
         str_to_compute_len = file_pre_line_.length();
     }
 
@@ -355,15 +354,13 @@ dc_content_local_t::thd_worker_compute_sha1_of_single_line(const uint8_t *s, con
     }
 
     lines_sha1_->emplace_back(SHA_DIGEST_LENGTH, 0);
-    SHA1(str_to_compute, str_to_compute_len, (unsigned char*)&(lines_sha1_->back())[0]);
+    SHA1(str_to_compute, str_to_compute_len, (unsigned char *)&(lines_sha1_->back())[0]);
     thd_worker_clear_pre_line();
 
     return S_SUCCESS;
 }
 
-dc_common_code_t
-dc_content_local_t::compute_sha1_by_lines(const int buf_len)
-{
+dc_common_code_t dc_content_local_t::compute_sha1_by_lines(const int buf_len) {
     int i = 0;
     int cur_line_begin = 0;
     dc_common_code_t ret;
@@ -392,9 +389,7 @@ dc_content_local_t::compute_sha1_by_lines(const int buf_len)
     return S_SUCCESS;
 }
 
-dc_common_code_t
-dc_content_local_t::thd_worker_file_content_prepare(void)
-{
+dc_common_code_t dc_content_local_t::thd_worker_file_content_prepare(void) {
     dc_common_code_t ret = S_SUCCESS;
 
     DC_COMMON_ASSERT(file_path_.size() > 0);
@@ -406,13 +401,8 @@ dc_content_local_t::thd_worker_file_content_prepare(void)
     // here we need to alloc a posize aligned 8K buffer
     // to read file content.
     if (file_read_buf_ == nullptr) {
-        if (posix_memalign((void **)&file_read_buf_,
-                           DC_CONTENT_MEM_ALIGN,
-                           DC_CONTENT_FILE_READ_BUF) != 0) {
-            LOG_ROOT_ERR(E_OS_ENV_MEM,
-                        "posix_memalign failed, errno=%d, errstr=%s",
-                        errno,
-                        strerror(errno));
+        if (posix_memalign((void **)&file_read_buf_, DC_CONTENT_MEM_ALIGN, DC_CONTENT_FILE_READ_BUF) != 0) {
+            LOG_ROOT_ERR(E_OS_ENV_MEM, "posix_memalign failed, errno=%d, errstr=%s", errno, strerror(errno));
             return E_OS_ENV_MEM;
         }
     }
@@ -422,10 +412,7 @@ dc_content_local_t::thd_worker_file_content_prepare(void)
 
     file_read_fd_ = open(file_path_.c_str(), O_RDONLY | O_DIRECT);
     if (file_read_fd_ < 0) {
-        LOG_ROOT_ERR(E_OS_ENV_OPEN,
-                     "open file failed, file_path=%s, errno=%d, errstr=%s",
-                     file_path_.c_str(),
-                     errno,
+        LOG_ROOT_ERR(E_OS_ENV_OPEN, "open file failed, file_path=%s, errno=%d, errstr=%s", file_path_.c_str(), errno,
                      strerror(errno));
         return E_OS_ENV_OPEN;
     }
@@ -441,25 +428,18 @@ dc_content_local_t::thd_worker_file_content_prepare(void)
  * 2. 读到了文件尾
  * 3. 读出了DC_CONTENT_FILE_READ_BUF
  */
-dc_common_code_t
-dc_content_local_t::thd_worker_file_content_read(void)
-{
+dc_common_code_t dc_content_local_t::thd_worker_file_content_read(void) {
     DC_COMMON_ASSERT(file_path_.size() > 0);
     DC_COMMON_ASSERT(lines_sha1_ != nullptr);
     DC_COMMON_ASSERT(empty_lines_ != nullptr);
 
-    //DC_COMMON_ASSERT(file_read_state_ == FILE_CONTENT_READ_PREPAR);
+    // DC_COMMON_ASSERT(file_read_state_ == FILE_CONTENT_READ_PREPAR);
     DC_COMMON_ASSERT(file_read_fd_ >= 0);
 
     // read 16MB from file
-    int read_len = read(file_read_fd_,
-                        file_read_buf_,
-                        DC_CONTENT_FILE_READ_BUF);
+    int read_len = read(file_read_fd_, file_read_buf_, DC_CONTENT_FILE_READ_BUF);
     if (read_len < 0) {
-        LOG_ROOT_ERR(E_OS_ENV_READ,
-                     "read file failed, file_path=%s, errno=%d, errstr=%s",
-                     file_path_.c_str(),
-                     errno,
+        LOG_ROOT_ERR(E_OS_ENV_READ, "read file failed, file_path=%s, errno=%d, errstr=%s", file_path_.c_str(), errno,
                      strerror(errno));
         return E_OS_ENV_READ;
     }
@@ -476,13 +456,12 @@ dc_content_local_t::thd_worker_file_content_read(void)
             // pre_line and the current line
             // and then clear the pre_line. So we need to
             // copy the current line to the pre_line.
-            if (thd_worker_check_is_empty_line((const uint8_t*)file_pre_line_.c_str(), file_pre_line_.length())) {
+            if (thd_worker_check_is_empty_line((const uint8_t *)file_pre_line_.c_str(), file_pre_line_.length())) {
                 (*empty_lines_)++;
             } else {
                 lines_sha1_->emplace_back(SHA_DIGEST_LENGTH, 0);
-                SHA1((const uint8_t*)file_pre_line_.c_str(),
-                     file_pre_line_.length(),
-                     (unsigned char*)&(lines_sha1_->back())[0]);
+                SHA1((const uint8_t *)file_pre_line_.c_str(), file_pre_line_.length(),
+                     (unsigned char *)&(lines_sha1_->back())[0]);
                 thd_worker_clear_pre_line();
             }
         }
@@ -506,14 +485,12 @@ dc_content_local_t::thd_worker_file_content_read(void)
         if (!file_pre_line_.empty()) {
             // we MUST compute the sha1 of the pre_line
             // check is empty line
-            if (thd_worker_check_is_empty_line((const uint8_t*)file_pre_line_.c_str(),
-                                               file_pre_line_.length())) {
+            if (thd_worker_check_is_empty_line((const uint8_t *)file_pre_line_.c_str(), file_pre_line_.length())) {
                 (*empty_lines_)++;
             } else {
                 lines_sha1_->emplace_back(SHA_DIGEST_LENGTH, 0);
-                SHA1((const uint8_t*)file_pre_line_.c_str(),
-                     file_pre_line_.length(),
-                     (unsigned char*)&(lines_sha1_->back())[0]);
+                SHA1((const uint8_t *)file_pre_line_.c_str(), file_pre_line_.length(),
+                     (unsigned char *)&(lines_sha1_->back())[0]);
                 thd_worker_clear_pre_line();
             }
         }
@@ -533,9 +510,7 @@ dc_content_local_t::thd_worker_file_content_read(void)
     return S_SUCCESS;
 }
 
-dc_common_code_t
-dc_content_local_t::get_file_md5(std::string &out)
-{
+dc_common_code_t dc_content_local_t::get_file_md5(std::string &out) {
     // convert the md5_ to print the md5 value
     char md5_str[MD5_DIGEST_LENGTH * 2 + 1];
     for (int i = 0; i < MD5_DIGEST_LENGTH; i++) {
