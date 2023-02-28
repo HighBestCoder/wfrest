@@ -1,35 +1,31 @@
 #include "dc_api_task.h"
+
+#include <algorithm>
+#include <unordered_map>
+
 #include "dc_common_assert.h"
 #include "dc_common_error.h"
 
-#include <unordered_map>
-#include <algorithm>
-
-static dc_common_code_t
-build_task_server_info(cJSON *server_item,
-                       dc_api_ctx_default_server_info_t *server_info)
-{
+static dc_common_code_t build_task_server_info(cJSON *server_item, dc_api_ctx_default_server_info_t *server_info) {
     char msg_buf[4096];
 
     DC_COMMON_ASSERT(server_item != NULL);
     DC_COMMON_ASSERT(server_info != NULL);
     DC_COMMON_ASSERT(server_info->c_task != NULL);
 
-#define HANDLE_ERROR_MSG(emsg, ...)           do {          \
-        snprintf(msg_buf, sizeof(msg_buf), __VA_ARGS__);    \
-        LOG_ROOT_ERR(E_ARG_INVALID, msg_buf);               \
-        server_info->c_error = E_ARG_INVALID;               \
-        server_info->c_error_msg = emsg;                    \
+#define HANDLE_ERROR_MSG(emsg, ...)                      \
+    do {                                                 \
+        snprintf(msg_buf, sizeof(msg_buf), __VA_ARGS__); \
+        LOG_ROOT_ERR(E_ARG_INVALID, msg_buf);            \
+        server_info->c_error = E_ARG_INVALID;            \
+        server_info->c_error_msg = emsg;                 \
     } while (0)
 
     // get center name
     cJSON *server_name = cJSON_GetObjectItem(server_item, "center");
-    if (server_name == NULL || 
-        server_name->type != cJSON_String ||
-        server_name->valuestring == NULL ||
+    if (server_name == NULL || server_name->type != cJSON_String || server_name->valuestring == NULL ||
         server_name->valuestring[0] == '\0') {
-        HANDLE_ERROR_MSG("center name is invalid", 
-                         "task:%s center name is invalid",
+        HANDLE_ERROR_MSG("center name is invalid", "task:%s center name is invalid",
                          server_info->c_task->t_task_uuid.c_str());
         return E_ARG_INVALID;
     }
@@ -38,12 +34,9 @@ build_task_server_info(cJSON *server_item,
 
     // get host name or ip address
     cJSON *server_hostname = cJSON_GetObjectItem(server_item, "host");
-    if (server_hostname == NULL || 
-        server_hostname->type != cJSON_String ||
-        server_hostname->valuestring == NULL ||
+    if (server_hostname == NULL || server_hostname->type != cJSON_String || server_hostname->valuestring == NULL ||
         server_hostname->valuestring[0] == '\0') {
-        HANDLE_ERROR_MSG("server host is invalid", 
-                         "task:%s server host is invalid",
+        HANDLE_ERROR_MSG("server host is invalid", "task:%s server host is invalid",
                          server_info->c_task->t_task_uuid.c_str());
         return E_ARG_INVALID;
     }
@@ -52,12 +45,9 @@ build_task_server_info(cJSON *server_item,
 
     // get user
     cJSON *server_user = cJSON_GetObjectItem(server_item, "user");
-    if (server_user == NULL ||
-        server_user->type != cJSON_String ||
-        server_user->valuestring == NULL ||
+    if (server_user == NULL || server_user->type != cJSON_String || server_user->valuestring == NULL ||
         server_user->valuestring[0] == '\0') {
-        HANDLE_ERROR_MSG("user is invalid",
-                         "task:%s given server's user is invalid",
+        HANDLE_ERROR_MSG("user is invalid", "task:%s given server's user is invalid",
                          server_info->c_task->t_task_uuid.c_str());
         return E_ARG_INVALID;
     }
@@ -67,12 +57,9 @@ build_task_server_info(cJSON *server_item,
 
     // get password
     cJSON *server_password = cJSON_GetObjectItem(server_item, "password");
-    if (server_password == NULL ||
-        server_password->type != cJSON_String ||
-        server_password->valuestring == NULL ||
+    if (server_password == NULL || server_password->type != cJSON_String || server_password->valuestring == NULL ||
         server_password->valuestring[0] == '\0') {
-        HANDLE_ERROR_MSG("password is invalid",
-                         "task:%s given server's password is invalid",
+        HANDLE_ERROR_MSG("password is invalid", "task:%s given server's password is invalid",
                          server_info->c_task->t_task_uuid.c_str());
         return E_ARG_INVALID;
     }
@@ -82,11 +69,8 @@ build_task_server_info(cJSON *server_item,
 
     // get port number
     cJSON *server_port = cJSON_GetObjectItem(server_item, "port");
-    if (server_port == NULL ||
-        server_port->type != cJSON_Number ||
-        server_port->valueint <= 0) {
-        HANDLE_ERROR_MSG("port is invalid",
-                         "task:%s given server's port is invalid",
+    if (server_port == NULL || server_port->type != cJSON_Number || server_port->valueint <= 0) {
+        HANDLE_ERROR_MSG("port is invalid", "task:%s given server's port is invalid",
                          server_info->c_task->t_task_uuid.c_str());
         return E_ARG_INVALID;
     }
@@ -97,10 +81,8 @@ build_task_server_info(cJSON *server_item,
     // get is standard bool value
     cJSON *server_is_standard = cJSON_GetObjectItem(server_item, "standard");
     if (server_is_standard == NULL ||
-        (server_is_standard->type != cJSON_True &&
-        server_is_standard->type != cJSON_False)) {
-        HANDLE_ERROR_MSG("is_standard is invalid",
-                         "task:%s given server's standard is invalid",
+        (server_is_standard->type != cJSON_True && server_is_standard->type != cJSON_False)) {
+        HANDLE_ERROR_MSG("is_standard is invalid", "task:%s given server's standard is invalid",
                          server_info->c_task->t_task_uuid.c_str());
         return E_ARG_INVALID;
     }
@@ -111,8 +93,7 @@ build_task_server_info(cJSON *server_item,
     cJSON *server_excluded_file_regex = cJSON_GetObjectItem(server_item, "excluded_file_regex");
     if (server_excluded_file_regex != NULL) {
         if (server_excluded_file_regex->type != cJSON_Array) {
-            HANDLE_ERROR_MSG("excluded_file_regex is invalid",
-                             "task:%s given server's excluded_file_regex is invalid",
+            HANDLE_ERROR_MSG("excluded_file_regex is invalid", "task:%s given server's excluded_file_regex is invalid",
                              server_info->c_task->t_task_uuid.c_str());
             return E_ARG_INVALID;
         }
@@ -120,8 +101,7 @@ build_task_server_info(cJSON *server_item,
         // get every item of file regex array
         cJSON *file_regex_item = NULL;
         cJSON_ArrayForEach(file_regex_item, server_excluded_file_regex) {
-            if (file_regex_item->type != cJSON_String ||
-                file_regex_item->valuestring == NULL ||
+            if (file_regex_item->type != cJSON_String || file_regex_item->valuestring == NULL ||
                 file_regex_item->valuestring[0] == '\0') {
                 HANDLE_ERROR_MSG("excluded_file_regex is invalid",
                                  "task:%s given server's excluded_file_regex is invalid",
@@ -135,28 +115,33 @@ build_task_server_info(cJSON *server_item,
 
     // get c_path_to_compare
     cJSON *server_path_to_compare = cJSON_GetObjectItem(server_item, "path_to_compare");
-    if (server_path_to_compare == NULL ||
-        server_path_to_compare->type != cJSON_String ||
-        server_path_to_compare->valuestring == NULL ||
-        server_path_to_compare->valuestring[0] == '\0') {
-        HANDLE_ERROR_MSG("path_to_compare is invalid",
-                         "task:%s given server's path_to_compare is invalid",
+    if (server_path_to_compare == NULL || server_path_to_compare->type != cJSON_String ||
+        server_path_to_compare->valuestring == NULL || server_path_to_compare->valuestring[0] == '\0') {
+        HANDLE_ERROR_MSG("path_to_compare is invalid", "task:%s given server's path_to_compare is invalid",
                          server_info->c_task->t_task_uuid.c_str());
         return E_ARG_INVALID;
     }
     server_info->c_path_to_compare = server_path_to_compare->valuestring;
     DC_COMMON_ASSERT(server_info->c_path_to_compare.length() > 0);
 
+    // get c_base_dir
+    cJSON *server_base_dir = cJSON_GetObjectItem(server_item, "base_dir");
+    if (server_base_dir == NULL || server_base_dir->type != cJSON_String || server_base_dir->valuestring == NULL ||
+        server_base_dir->valuestring[0] == '\0') {
+        HANDLE_ERROR_MSG("base_dir is invalid", "task:%s given server's base_dir is invalid",
+                         server_info->c_task->t_task_uuid.c_str());
+        return E_ARG_INVALID;
+    }
+    server_info->c_base_dir = server_base_dir->valuestring;
+    DC_COMMON_ASSERT(server_info->c_base_dir.length() > 0);
+
 #undef HANDLE_ERROR_MSG
 
     return S_SUCCESS;
 }
 
-dc_common_code_t
-build_task_from_json(const char *task_content,
-                     const uint32_t task_content_len,
-                     dc_api_task_t *task/*已经生成内存*/)
-{
+dc_common_code_t build_task_from_json(const char *task_content, const uint32_t task_content_len,
+                                      dc_api_task_t *task /*已经生成内存*/) {
     char msg_buf[4096];
     cJSON *root = NULL;
 
@@ -166,35 +151,28 @@ build_task_from_json(const char *task_content,
 
     root = cJSON_Parse(task_content);
     if (root == NULL) {
-        snprintf(msg_buf, sizeof(msg_buf),
-                 "task_content:%.*s is not a valid json string",
-                 task_content_len, task_content);
+        snprintf(msg_buf, sizeof(msg_buf), "task_content:%.*s is not a valid json string", task_content_len,
+                 task_content);
         LOG_ROOT_ERR(E_ARG_INVALID, msg_buf);
         task->t_error = E_ARG_INVALID;
         task->t_error_msg = msg_buf;
         return E_ARG_INVALID;
     }
 
-     // use shared ptr to defer release root
-     std::shared_ptr<void> root_ptr(root, [](void *p) {
-         cJSON_Delete((cJSON *)p);
-     });
+    // use shared ptr to defer release root
+    std::shared_ptr<void> root_ptr(root, [](void *p) { cJSON_Delete((cJSON *)p); });
 
-#define HANDLE_ERROR_MSG(emsg, ...)           do {          \
-        snprintf(msg_buf, sizeof(msg_buf), __VA_ARGS__);    \
-        LOG_ROOT_ERR(E_ARG_INVALID, msg_buf);               \
-        task->t_error = E_ARG_INVALID;                      \
-        task->t_error_msg = emsg;                           \
+#define HANDLE_ERROR_MSG(emsg, ...)                      \
+    do {                                                 \
+        snprintf(msg_buf, sizeof(msg_buf), __VA_ARGS__); \
+        LOG_ROOT_ERR(E_ARG_INVALID, msg_buf);            \
+        task->t_error = E_ARG_INVALID;                   \
+        task->t_error_msg = emsg;                        \
     } while (0)
 
     cJSON *task_uuid = cJSON_GetObjectItem(root, "uuid");
-    if (task_uuid == NULL || 
-        task_uuid->type != cJSON_String ||
-        task_uuid->valuestring == NULL) {
-        HANDLE_ERROR_MSG("no task uuid provided",
-                         "did not provide task_uuid, task_content:%.*s"
-                         ,
-                         task_content_len,
+    if (task_uuid == NULL || task_uuid->type != cJSON_String || task_uuid->valuestring == NULL) {
+        HANDLE_ERROR_MSG("no task uuid provided", "did not provide task_uuid, task_content:%.*s", task_content_len,
                          task_content);
         return E_ARG_INVALID;
     }
@@ -208,55 +186,40 @@ build_task_from_json(const char *task_content,
     if (result_type != NULL) {
         if (result_type->type != cJSON_Number) {
             HANDLE_ERROR_MSG("result_type is not number",
-                             "task:%s did not provide valid result_type, task_content:%.*s"
-                             ,
-                             task->t_task_uuid.c_str(),
-                             task_content_len,
-                             task_content);
+                             "task:%s did not provide valid result_type, task_content:%.*s", task->t_task_uuid.c_str(),
+                             task_content_len, task_content);
             return E_ARG_INVALID;
         }
 
-        if (!(result_type->valueint >= FC_TASK_RESULT_GIT_DIFF &&
-              result_type->valueint < FC_TASK_RESULT_INVALID)) {
-              HANDLE_ERROR_MSG("result_type value is not valid",
-                               "task:%s did not provide valid result_type, task_content:%.*s"
-                               ,
-                               task->t_task_uuid.c_str(),
-                               task_content_len,
-                               task_content);
+        if (!(result_type->valueint >= FC_TASK_RESULT_GIT_DIFF && result_type->valueint < FC_TASK_RESULT_INVALID)) {
+            HANDLE_ERROR_MSG("result_type value is not valid",
+                             "task:%s did not provide valid result_type, task_content:%.*s", task->t_task_uuid.c_str(),
+                             task_content_len, task_content);
             return E_ARG_INVALID;
         }
 
         task->t_result_type = result_type->valueint;
     }
 
-    DC_COMMON_ASSERT(task->t_result_type >= FC_TASK_RESULT_GIT_DIFF &&
-                     task->t_result_type < FC_TASK_RESULT_INVALID);
+    DC_COMMON_ASSERT(task->t_result_type >= FC_TASK_RESULT_GIT_DIFF && task->t_result_type < FC_TASK_RESULT_INVALID);
 
     // excluded file regex
     cJSON *excluded_file_regex = cJSON_GetObjectItem(root, "excluded_file_regex");
     if (excluded_file_regex != NULL) {
         if (excluded_file_regex->type != cJSON_Array) {
             HANDLE_ERROR_MSG("excluded_file_regex is not array",
-                             "task:%s did not provide valid excluded_file_regex, task_content:%.*s"
-                             ,
-                             task->t_task_uuid.c_str(),
-                             task_content_len,
-                             task_content);
+                             "task:%s did not provide valid excluded_file_regex, task_content:%.*s",
+                             task->t_task_uuid.c_str(), task_content_len, task_content);
             return E_ARG_INVALID;
         }
         // excluded_file_regex is an array, we need to fetch every item from
         // excluded_file_regex.
         cJSON *excluded_file_regex_item = NULL;
         cJSON_ArrayForEach(excluded_file_regex_item, excluded_file_regex) {
-            if (excluded_file_regex_item->type != cJSON_String ||
-                excluded_file_regex_item->valuestring == NULL) {
+            if (excluded_file_regex_item->type != cJSON_String || excluded_file_regex_item->valuestring == NULL) {
                 HANDLE_ERROR_MSG("excluded_file_regex item is not string",
-                                 "task:%s did not provide valid excluded_file_regex, task_content:%.*s"
-                                 ,
-                                 task->t_task_uuid.c_str(),
-                                 task_content_len,
-                                 task_content);
+                                 "task:%s did not provide valid excluded_file_regex, task_content:%.*s",
+                                 task->t_task_uuid.c_str(), task_content_len, task_content);
                 return E_ARG_INVALID;
             }
 
@@ -266,14 +229,9 @@ build_task_from_json(const char *task_content,
 
     // get servers list
     cJSON *servers = cJSON_GetObjectItem(root, "servers");
-    if (servers == NULL || 
-        servers->type != cJSON_Array) {
-        HANDLE_ERROR_MSG("no servers_list provided",
-                         "task:%s did not provide valid servers, task_content:%.*s"
-                         ,
-                         task->t_task_uuid.c_str(),
-                         task_content_len,
-                         task_content);
+    if (servers == NULL || servers->type != cJSON_Array) {
+        HANDLE_ERROR_MSG("no servers_list provided", "task:%s did not provide valid servers, task_content:%.*s",
+                         task->t_task_uuid.c_str(), task_content_len, task_content);
         return E_ARG_INVALID;
     }
 
@@ -281,12 +239,8 @@ build_task_from_json(const char *task_content,
     cJSON *server_item = NULL;
     cJSON_ArrayForEach(server_item, servers) {
         if (server_item->type != cJSON_Object) {
-            HANDLE_ERROR_MSG("server item is not object",
-                             "task:%s did not provide valid servers, task_content:%.*s"
-                             ,
-                             task->t_task_uuid.c_str(),
-                             task_content_len,
-                             task_content);
+            HANDLE_ERROR_MSG("server item is not object", "task:%s did not provide valid servers, task_content:%.*s",
+                             task->t_task_uuid.c_str(), task_content_len, task_content);
             return E_ARG_INVALID;
         }
 
@@ -302,12 +256,8 @@ build_task_from_json(const char *task_content,
     for (size_t i = 0; i < task->t_server_info_arr.size(); i++) {
         if (task->t_server_info_arr[i].c_standard) {
             if (task->t_std_idx != -1) {
-                LOG_ROOT_ERR(E_ARG_INVALID,
-                             "task:%s has more than one standard server, task_content:%.*s"
-                             ,
-                             task->t_task_uuid.c_str(),
-                             task_content_len,
-                             task_content);
+                LOG_ROOT_ERR(E_ARG_INVALID, "task:%s has more than one standard server, task_content:%.*s",
+                             task->t_task_uuid.c_str(), task_content_len, task_content);
                 return E_ARG_INVALID;
             }
             task->t_std_idx = i;
@@ -315,12 +265,8 @@ build_task_from_json(const char *task_content,
     }
 
     if (task->t_std_idx == -1) {
-        HANDLE_ERROR_MSG("no standard server provided",
-                         "task:%s did not provide standard server, task_content:%.*s"
-                         ,
-                         task->t_task_uuid.c_str(),
-                         task_content_len,
-                         task_content);
+        HANDLE_ERROR_MSG("no standard server provided", "task:%s did not provide standard server, task_content:%.*s",
+                         task->t_task_uuid.c_str(), task_content_len, task_content);
         return E_ARG_INVALID;
     }
 

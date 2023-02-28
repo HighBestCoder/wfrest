@@ -310,7 +310,7 @@ dc_common_code_t dc_content_local_t::thd_worker_dir_list_attr(void) {
         // 读取文件属性
         // 首先stat查看一下文件是否存在?
         struct stat file_stat;
-        int stat_ret = stat(file_path_.c_str(), &file_stat);
+        int stat_ret = stat(dir.c_str(), &file_stat);
         if (stat_ret != 0) {
             LOG_ROOT_ERR(E_OS_ENV_STAT, "stat file failed, file_path=%s, errno=%d, errstr=%s", file_path_.c_str(),
                          errno, strerror(errno));
@@ -323,19 +323,24 @@ dc_common_code_t dc_content_local_t::thd_worker_dir_list_attr(void) {
         DC_COMMON_ASSERT(S_ISDIR(file_stat.st_mode));
 
         // get file mode, then convert st_mode to string
-        char mode_str[32] = {0};
+        char mode_str[128] = {0};
         snprintf(mode_str, sizeof(mode_str), "%o", file_stat.st_mode & 0777);
-        file_attr_->f_mode = mode_str;
+        dir_attr.f_mode = mode_str;
 
         // get owner name by st_uid
         struct passwd *pwd = getpwuid(file_stat.st_uid);
         if (pwd == nullptr) {
-            LOG_ROOT_ERR(E_OS_ENV_GETPWUID, "getpwuid failed, errno=%d, errstr=%s", errno, strerror(errno));
-            dir_attr.f_code = E_OS_ENV_GETPWUID;
-            continue;
+            if (errno == 0) {
+                dir_attr.f_owner = "0";
+            } else {
+                LOG_ROOT_ERR(E_OS_ENV_GETPWUID, "task:%s path:%s getpwuid failed, errno=%d, errstr=%s",
+                             server_->c_task->t_task_uuid.c_str(), dir.c_str(), errno, strerror(errno));
+                dir_attr.f_code = E_OS_ENV_GETPWUID;
+                continue;
+            }
+        } else {
+            dir_attr.f_owner = pwd->pw_name;
         }
-
-        file_attr_->f_owner = pwd->pw_name;
 
         // get file last updated time, convert st_mtime to string
         char time_str[32] = {0};
@@ -348,7 +353,7 @@ dc_common_code_t dc_content_local_t::thd_worker_dir_list_attr(void) {
 
         // format tm to string
         strftime(time_str, sizeof(time_str), "%Y%m%d%-H%M%S", tm);
-        file_attr_->f_last_updated = time_str;
+        dir_attr.f_last_updated = time_str;
     }
 
     return ret;

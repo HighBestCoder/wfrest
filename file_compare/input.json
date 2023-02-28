@@ -9,7 +9,8 @@
       "password": "admin",
       "port": 8091,
       "standard": true,
-      "path_to_compare": "/opt"
+      "base_dir": "/opt",
+      "path_to_compare": "."
     }
   ]
 }

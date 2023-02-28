@@ -29,10 +29,6 @@ private:
     // 线程函数的入口main
     dc_common_code_t execute();
 
-    // 文件比较函数
-    dc_common_code_t exe_sql_job_for_file(dc_api_task_t *task, const char *file_path, bool is_dir,
-                                          wfrest::Json &single_file_compare_result_json /*OUT*/);
-
     // 执行单个文件!
     dc_common_code_t exe_sql_job_for_single_item_file(dc_api_task_t *task, const char *file_rull_path,
                                                       const int json_idx, std::vector<dc_content_t *> &content_list);

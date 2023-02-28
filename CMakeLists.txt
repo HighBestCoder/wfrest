@@ -5,6 +5,8 @@ project(wfrest
 	VERSION 0.1.0
 	LANGUAGES C CXX)
 
+set(CMAKE_BUILD_TYPE Debug)
+#set(CMAKE_BUILD_TYPE RELEASE)
 #### CHECK
 
 include(CheckIncludeFile)
@@ -91,5 +93,5 @@ install(
 	COMPONENT devel
 )
 
-add_subdirectory(file_compare)
+#add_subdirectory(file_compare)
 

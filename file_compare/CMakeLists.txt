@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.6)
 
-set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "build type")
+# set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "build type")
 
+set(CMAKE_BUILD_TYPE Debug)
+# set(CMAKE_BUILD_TYPE RELEASE)
 #project(wfrest_example LANGUAGES C CXX)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR})

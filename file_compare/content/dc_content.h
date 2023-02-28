@@ -15,11 +15,11 @@
 #include "dc_common_error.h"  // dc_error_t
 
 typedef struct dc_file_attr {
-    int64_t f_size { 0 };              // 文件大小
-    std::string f_mode;          // 文件的权限
-    std::string f_owner;         // 文件拥有者
-    std::string f_last_updated;  // 文件最后更新时间
-    dc_common_code_t f_code { 0};     // 文件的错误码
+    int64_t f_size{0};                   // 文件大小
+    std::string f_mode;                  // 文件的权限
+    std::string f_owner;                 // 文件拥有者
+    std::string f_last_updated;          // 文件最后更新时间
+    dc_common_code_t f_code{S_SUCCESS};  // 文件的错误码
 
     bool compare(const dc_file_attr &f) const {
         return (f_code == 0 && f.f_code == 0 && f_size == f.f_size && f_mode == f.f_mode && f_owner == f.f_owner &&

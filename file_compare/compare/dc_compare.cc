@@ -59,30 +59,40 @@ dc_common_code_t dc_compare_t::get(wfrest::Json &result_json) {
     return S_SUCCESS;
 }
 
-static void assign_attr_to_json(wfrest::Json &json, const std::string &center_name, dc_file_attr_t &attr,
+static bool assign_attr_to_json(wfrest::Json &json, const std::string &center_name, const dc_file_attr_t &attr) {
+    json["server_name"] = center_name;
+    json["size"] = attr.f_size;
+    json["owner"] = attr.f_owner;
+    json["last_updated"] = attr.f_last_updated;
+    json["mode"] = attr.f_mode;
+
+    return true;
+}
+
+static bool assign_attr_to_json(wfrest::Json &json, const std::string &center_name, const dc_file_attr_t &attr,
                                 const std::string &md5) {
-    std_server_file_info["server_name"] = center_name;
-    std_server_file_info["size"] = attr.f_size;
-    std_server_file_info["owner"] = attr.f_owner;
-    std_server_file_info["last_updated"] = attr.f_last_updated;
-    std_server_file_info["mode"] = attr.f_mode;
-    std_server_file_info["is_standard"] = true;
-    std_server_file_info["md5"] = md5;
+    json["server_name"] = center_name;
+    json["size"] = attr.f_size;
+    json["owner"] = attr.f_owner;
+    json["last_updated"] = attr.f_last_updated;
+    json["mode"] = attr.f_mode;
+    json["md5"] = md5;
+
+    return true;
 }
 
 // 返回值true表示往json里面添加了内容
 // 返回值false表示没有往json里面添加内容
-static bool compare_assign_attr_to_json(const dc_file_attr_t &std, dc_file_attr_t &other, wfrest::Json &json,
+static bool compare_assign_attr_to_json(const dc_file_attr_t &std, const dc_file_attr_t &other, wfrest::Json &json,
                                         const std::string &center_name) {
-    if (std.f_code != S_SUCCESS) {
-        assign_attr_to_json(json, center_name, other, other_md5);
-        return true;
-    }
-
     if (other.f_code != S_SUCCESS) {
         json["errno"] = other.f_code;
         json["error"] = dc_common_code_msg(other.f_code);
         return true;
+    }
+
+    if (std.f_code != S_SUCCESS) {
+        return assign_attr_to_json(json, center_name, other);
     }
 
     DC_COMMON_ASSERT(std.f_code == S_SUCCESS);
@@ -120,15 +130,14 @@ static bool compare_assign_attr_to_json(const dc_file_attr_t &std, dc_file_attr_
 static bool compare_assign_attr_to_json(const dc_file_attr_t &std, dc_file_attr_t &other, wfrest::Json &json,
                                         const std::string &center_name, const std::string &std_md5,
                                         const std::string &other_md5) {
-    if (std.f_code != S_SUCCESS) {
-        assign_attr_to_json(json, center_name, other, other_md5);
-        return true;
-    }
-
     if (other.f_code != S_SUCCESS) {
         json["errno"] = other.f_code;
         json["error"] = dc_common_code_msg(other.f_code);
         return true;
+    }
+
+    if (std.f_code != S_SUCCESS) {
+        return assign_attr_to_json(json, center_name, other, other_md5);
     }
 
     DC_COMMON_ASSERT(std.f_code == S_SUCCESS);
@@ -181,163 +190,6 @@ static bool compare_assign_attr_to_json(const dc_file_attr_t &std, dc_file_attr_
  *
  * 第五步：由A生成差异!
  */
-dc_common_code_t dc_compare_t::exe_sql_job_for_file(dc_api_task_t *task, const char *c_file_path, bool is_dir,
-                                                    wfrest::Json &single_file_compare_result_json /*CHANGED*/) {
-    dc_common_code_t ret = S_SUCCESS;
-
-    LOG(DC_COMMON_LOG_INFO, "[main] task:%s compare file:%s", task->t_task_uuid.c_str(), c_file_path);
-
-    DC_COMMON_ASSERT(task != nullptr);
-    DC_COMMON_ASSERT(task->t_std_idx >= 0);
-    DC_COMMON_ASSERT(task->t_std_idx < (int)task->t_server_info_arr.size());
-
-    const int task_number = task->t_server_info_arr.size();
-    const int std_idx = task->t_std_idx;
-
-    DC_COMMON_ASSERT(task_number > 0);
-    DC_COMMON_ASSERT(std_idx >= 0);
-    DC_COMMON_ASSERT(std_idx < task_number);
-
-    std::vector<dc_content_t *> content_list;
-
-    for (int i = 0; i < task_number; i++) {
-        // TODO std 用local_content_t
-        // other 用户remote_content_t
-        dc_content_t *content = new dc_content_local_t(&task->t_server_info_arr[i]);
-        DC_COMMON_ASSERT(content != nullptr);
-
-        content_list.push_back(content);
-    }
-
-    std::string file_path(c_file_path);
-    std::vector<dc_file_attr_t> file_attr_list(task_number);
-
-    for (size_t i = 0; i < content_list.size(); i++) {
-        ret = content_list[i]->do_file_attr(file_path, &file_attr_list[i]);
-        LOG_CHECK_ERR_RETURN(ret);
-    }
-
-    std::vector<bool> job_has_done(task_number, false);
-
-    int job_done_nr = 0;
-    while (job_done_nr < task_number) {
-        for (int i = 0; i < task_number; i++) {
-            auto &content = content_list[i];
-            if (job_has_done[i]) {
-                continue;
-            }
-
-            dc_common_code_t ret = content->get_file_attr();
-            if (ret == E_DC_CONTENT_RETRY) {
-                continue;
-            }
-
-            if (ret == S_SUCCESS) {
-                job_has_done[i] = true;
-                job_done_nr++;
-            } else {
-                job_has_done[i] = true;
-                LOG_CHECK_ERR(ret);
-                job_done_nr++;
-            }
-        }
-    }
-
-    auto file_name_pair = get_base_and_file_name(file_path);
-    single_file_compare_result_json["dir"] = file_name_pair.first;
-    single_file_compare_result_json["name"] = file_name_pair.second;
-    single_file_compare_result_json["servers"] = wfrest::Json::array();
-
-    // set job_has_done to false
-    for (int i = 0; i < task_number; i++) {
-        job_has_done[i] = false;
-    }
-    std::vector<std::string> file_md5_list(task_number);
-
-    if (!is_dir) {
-        // get file content
-        std::vector<std::vector<std::string>> file_content_list(task_number);
-        std::vector<int> empty_lines_nr_list(task_number, 0);
-        for (int i = 0; i < task_number; i++) {
-            auto &content = content_list[i];
-            ret = content->do_file_content(file_path, &file_content_list[i], &empty_lines_nr_list[i]);
-            LOG_CHECK_ERR_RETURN(ret);
-        }
-
-        job_done_nr = 0;
-        while (job_done_nr < task_number) {
-            for (int i = 0; i < task_number; i++) {
-                auto &content = content_list[i];
-                if (job_has_done[i]) {
-                    continue;
-                }
-
-                dc_common_code_t ret = content->get_file_content();
-                if (ret == E_DC_CONTENT_RETRY) {
-                    continue;
-                }
-
-                if (ret == S_SUCCESS || ret == E_DC_CONTENT_OVER) {
-                    job_has_done[i] = true;
-                    ret = content->get_file_md5(file_md5_list[i]);
-                    LOG_CHECK_ERR_RETURN(ret);
-                    job_done_nr++;
-                } else {
-                    job_has_done[i] = true;
-                    LOG_CHECK_ERR(ret);
-                    job_done_nr++;
-                }
-            }
-        }
-    }
-
-    // compare the sha1 list
-    for (int i = 0; i < task_number; i++) {
-        if (i == std_idx) {
-            wfrest::Json std_server_file_info;
-            assign_attr_to_json(std_server_file_info, task->t_server_info_arr[i].c_center, file_attr_list[i],
-                                file_md5_list[i]);
-            single_file_compare_result_json["servers"].push_back(std_server_file_info);
-        } else {
-            // compare the size, owner, last_updated, mode, md5
-            auto is_same = file_attr_list[std_idx].compare(file_attr_list[i]);
-            if (!is_same) {
-                wfrest::Json diff_server_info;
-                diff_server_info["server_name"] = task->t_server_info_arr[i].c_center;
-                // if f_size is not the same
-                if (file_attr_list[std_idx].f_size != file_attr_list[i].f_size) {
-                    diff_server_info["size"] = file_attr_list[i].f_size;
-                }
-                // if f_owner is not the same
-                if (file_attr_list[std_idx].f_owner != file_attr_list[i].f_owner) {
-                    diff_server_info["owner"] = file_attr_list[i].f_owner;
-                }
-                // if f_last_updated is not the same
-                if (file_attr_list[std_idx].f_last_updated != file_attr_list[i].f_last_updated) {
-                    diff_server_info["last_updated"] = file_attr_list[i].f_last_updated;
-                }
-                // if f_mode is not the same
-                if (file_attr_list[std_idx].f_mode != file_attr_list[i].f_mode) {
-                    diff_server_info["mode"] = file_attr_list[i].f_mode;
-                }
-                // if f_md5 is not the same
-                if (file_md5_list[std_idx] != file_md5_list[i]) {
-                    diff_server_info["md5"] = file_md5_list[i];
-                }
-                single_file_compare_result_json["servers"].push_back(diff_server_info);
-            }
-        }
-    }
-
-    for (auto &content : content_list) {
-        delete content;
-    }
-
-    content_list.clear();
-
-    return ret;
-}
-
 dc_common_code_t dc_compare_t::exe_sql_job_for_single_item_file(dc_api_task_t *task, const char *file_rull_path,
                                                                 const int json_idx,
                                                                 std::vector<dc_content_t *> &content_list) {
@@ -347,6 +199,7 @@ dc_common_code_t dc_compare_t::exe_sql_job_for_single_item_file(dc_api_task_t *t
     DC_COMMON_ASSERT(file_rull_path != nullptr);
     DC_COMMON_ASSERT(task->t_server_info_arr.size() == content_list.size());
     // 一次发一个文件!
+    return S_SUCCESS;
 }
 
 dc_common_code_t dc_compare_t::exe_sql_job_for_single_item_dir1(dc_api_task_t *task,
@@ -410,9 +263,8 @@ dc_common_code_t dc_compare_t::exe_sql_job_for_single_item_dir1(dc_api_task_t *t
         const auto &dir_path = dir_q_[dir_idx].first;
         const auto &dir_json_idx = dir_q_[dir_idx].second;
         DC_COMMON_ASSERT(dir_json_idx >= 0);
-        DC_COMMON_ASSERT(dir_json_idx < (int)task->t_compare_result_json.size());
-
-        auto &ret_json = task->t_compare_result_json[dir_json_idx];
+        DC_COMMON_ASSERT(dir_json_idx < (int)task->t_compare_result_json["diffs"].size());
+        auto &ret_json = task->t_compare_result_json["diffs"][dir_json_idx];
 
         wfrest::Json server_json_list = nlohmann::json::array();
 
@@ -422,25 +274,21 @@ dc_common_code_t dc_compare_t::exe_sql_job_for_single_item_dir1(dc_api_task_t *t
 
         // 首先我们要为这个json生成std的结果!
         wfrest::Json std_cur_dir_json;
+        std_cur_dir_json["is_standard"] = true;
+
         dc_file_attr_t std_cur_dir_attr;
 
-        auto &std_dir_attr = dir_attr_list[task->t_std_idx];
-        if (dir_idx >= std_dir_attr.size()) {
+        auto &std_dir_attr_list = dir_attr_list[task->t_std_idx];
+        if (dir_idx >= std_dir_attr_list.size()) {
             std_cur_dir_json["errno"] = has_failed[task->t_std_idx];
-            std_cur_dir_json["error"] = dc_common_code_to_str(has_failed[task->t_std_idx]);
-            std_cur_dir_attr.f_code = has_failed[task->t_std_idx];
+            std_cur_dir_json["error"] = dc_common_code_msg((dc_common_code_t)has_failed[task->t_std_idx]);
+            std_cur_dir_attr.f_code = (dc_common_code_t)has_failed[task->t_std_idx];
         } else {
-            auto &std_dir_attr_item = std_dir_attr[dir_idx];
-            std_cur_dir_json["server_name"] = task->t_server_info_arr[task->t_std_idx].c_center;
-            std_cur_dir_json["size"] = file_attr_list[task->t_std_idx].f_size;
-            std_cur_dir_json["owner"] = file_attr_list[task->t_std_idx].f_owner;
-            std_cur_dir_json["last_updated"] = file_attr_list[task->t_std_idx].f_last_updated;
-            std_cur_dir_json["mode"] = file_attr_list[task->t_std_idx].f_mode;
-            std_cur_dir_json["is_standard"] = true;
-            std_cur_dir_json["md5"] = file_md5_list[task->t_std_idx];
-
-            std_cur_dir_attr = std_dir_attr_item;
+            assign_attr_to_json(std_cur_dir_json, task->t_server_info_arr[task->t_std_idx].c_center,
+                                std_dir_attr_list[dir_idx]);
+            std_cur_dir_attr = std_dir_attr_list[dir_idx];
         }
+        server_json_list.push_back(std_cur_dir_json);
 
         for (auto server_idx = 0; server_idx < content_list.size(); server_idx++) {
             if (server_idx == task->t_std_idx) {
@@ -453,23 +301,14 @@ dc_common_code_t dc_compare_t::exe_sql_job_for_single_item_dir1(dc_api_task_t *t
             if (dir_idx >= server_dir_attr.size()) {
                 // 那么json在这里需要说明这个server在这里出错了!
                 other_cur_dir_json["errno"] = has_failed[server_idx];
-                other_cur_dir_json["error"] = dc_common_code_to_str(has_failed[server_idx]);
+                other_cur_dir_json["error"] = dc_common_code_msg((dc_common_code_t)has_failed[server_idx]);
+                server_json_list.push_back(other_cur_dir_json);
             } else {
                 auto &server_dir_attr_item = server_dir_attr[dir_idx];
-
-                if (std_cur_dir_attr.compare(server_dir_attr_item)) {
-                    // 说明这个server的结果和std的结果是一样的
-                    // 那么我们就不需要再生成这个json了
-                    continue;
+                if (compare_assign_attr_to_json(std_cur_dir_attr, server_dir_attr_item, other_cur_dir_json,
+                                                task->t_server_info_arr[server_idx].c_center)) {
+                    server_json_list.push_back(other_cur_dir_json);
                 }
-
-                other_cur_dir_json["server_name"] = task->t_server_info_arr[server_idx].c_center;
-                other_cur_dir_json["size"] = file_attr_list[server_idx].f_size;
-                other_cur_dir_json["owner"] = file_attr_list[server_idx].f_owner;
-                other_cur_dir_json["last_updated"] = file_attr_list[server_idx].f_last_updated;
-                other_cur_dir_json["mode"] = file_attr_list[server_idx].f_mode;
-                other_cur_dir_json["is_standard"] = false;
-                other_cur_dir_json["md5"] = file_md5_list[server_idx];
             }
         }
 
@@ -626,7 +465,7 @@ dc_common_code_t dc_compare_t::exe_sql_job1(dc_api_task_t *task, std::vector<dc_
         // std server 使用chdir跳到自己的basedir
         int err = chdir(task->t_server_info_arr[task->t_std_idx].c_base_dir.c_str());
         if (err) {
-            LOG_ROOT_ERR(E_OS_ENV_CHDIR, "task:%s chdir %s failed errno:%d error:%s", task->t_task_uuid.c_str(),
+            LOG_ROOT_ERR(E_OS_ENV_CHDIR, "task:%s chdir:%s failed errno:%d error:%s", task->t_task_uuid.c_str(),
                          task->t_server_info_arr[task->t_std_idx].c_base_dir.c_str(), errno, strerror(errno));
         }
 
@@ -659,7 +498,8 @@ dc_common_code_t dc_compare_t::exe_sql_job(dc_api_task_t *task) {
             auto local_content_reader = new dc_content_local_t(&server_info);
             dc_content_list.emplace_back(local_content_reader);
         } else {
-            auto remote_content_reader = new dc_content_remote_t(&server_info);
+            // TODO convert to remote_content
+            auto remote_content_reader = new dc_content_local_t(&server_info);
             dc_content_list.emplace_back(remote_content_reader);
         }
     }
