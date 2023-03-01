@@ -61,7 +61,9 @@ dc_common_code_t dc_compare_t::get(wfrest::Json &result_json) {
 
 static bool assign_attr_to_json(wfrest::Json &json, const std::string &center_name, const dc_file_attr_t &attr) {
     json["server_name"] = center_name;
-    json["size"] = attr.f_size;
+    if (attr.f_size >= 0) {
+        json["size"] = attr.f_size;
+    }
     json["owner"] = attr.f_owner;
     json["last_updated"] = attr.f_last_updated;
     json["mode"] = attr.f_mode;
@@ -72,7 +74,9 @@ static bool assign_attr_to_json(wfrest::Json &json, const std::string &center_na
 static bool assign_attr_to_json(wfrest::Json &json, const std::string &center_name, const dc_file_attr_t &attr,
                                 const std::string &md5) {
     json["server_name"] = center_name;
-    json["size"] = attr.f_size;
+    if (attr.f_size >= 0) {
+        json["size"] = attr.f_size;
+    }
     json["owner"] = attr.f_owner;
     json["last_updated"] = attr.f_last_updated;
     json["mode"] = attr.f_mode;
@@ -380,6 +384,9 @@ dc_common_code_t dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task, const ch
         return E_OS_ENV_OPEN;
     }
 
+    // use shared_ptr as defer to close dir
+    std::shared_ptr<DIR> defer_close_dir(d, [](DIR *d) { closedir(d); });
+
     while ((dir = readdir(d)) != NULL) {
         if (dir->d_type == DT_LNK) {
             // 我们只比较目录和文件！
@@ -424,8 +431,6 @@ dc_common_code_t dc_compare_t::exe_sql_job_for_dir(dc_api_task_t *task, const ch
             LOG_CHECK_ERR_RETURN(ret);
         }
     }
-
-    closedir(d);
 
     return S_SUCCESS;
 }
@@ -475,7 +480,8 @@ dc_common_code_t dc_compare_t::exe_sql_job1(dc_api_task_t *task, std::vector<dc_
         LOG_CHECK_ERR_RETURN(ret);
 
         if (dir_q_.size() > 0) {
-            // TODO 把这里所有的目录一次性全部发掉
+            ret = exe_sql_job_for_single_item_dir1(task, content_list);
+            LOG_CHECK_ERR_RETURN(ret);
         }
 
         return ret;
@@ -538,6 +544,7 @@ dc_common_code_t dc_compare_t::execute() {
         task->t_compare_result_json["diffs"] = wfrest::Json::array();
         task->t_compare_result_json["next_shard"] = -1;
 
+        running_task_nr_++;
         ret = exe_sql_job(task);
         LOG_CHECK_ERR(ret);
 
@@ -545,8 +552,9 @@ dc_common_code_t dc_compare_t::execute() {
             task->t_compare_result_json["errno"] = ret;
             task->t_compare_result_json["error"] = dc_common_code_msg(ret);
         }
-
         out_q_.write((void *)task);
+        running_task_nr_--;
+
     }  // end while
 
     return S_SUCCESS;

@@ -32,6 +32,7 @@ typedef enum dc_common_code
 
     E_NOT_SUPPORT_FILE_TYPE,
     E_NOT_IMPL,
+    E_NOT_FOUND,
     E_ASSERT,
 
     E_ARG_INVALID, /* 无效参数          */

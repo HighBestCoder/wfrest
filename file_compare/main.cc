@@ -1,42 +1,41 @@
-#include "workflow/WFFacilities.h"
-#include "wfrest/HttpServer.h"
-#include "wfrest/json.hpp"
+#include <csignal>
+#include <unordered_set>
 
 #include "dc_api_task.h"
-#include "dc_compare.h"
 #include "dc_common_trace_log.h"
-
-#include <csignal>
+#include "dc_compare.h"
+#include "wfrest/HttpServer.h"
+#include "wfrest/json.hpp"
+#include "workflow/WFFacilities.h"
 
 using namespace wfrest;
 
 static WFFacilities::WaitGroup wait_group(1);
 
-void sig_handler(int signo)
-{
-    wait_group.done();
-}
+void sig_handler(int signo) { wait_group.done(); }
 
-int main()
-{
+int main() {
     signal(SIGINT, sig_handler);
 
     HttpServer svr;
     dc_compare_t compare_worker;
 
-    // 1. You can `./13_compess_client` 
+    std::unordered_set<std::string> task_uuid_set;
+
+    // 1. You can `./13_compess_client`
     // 2. or use python script `python3 13_compress_client.py`
     // 3.
-    // echo '{"testgzip": "gzip compress data"}' | gzip | curl -v -i --data-binary @- -H "Content-Encoding: gzip" http://localhost:8888/task
-    // echo '{"testgzip": "gzip compress data"}' | curl -v -i --data-binary @- http://localhost:8888/task
-    svr.POST("/task/{uuid}", [&compare_worker](const HttpReq *req, HttpResp *resp) {
+    // echo '{"testgzip": "gzip compress data"}' | gzip | curl -v -i --data-binary @- -H "Content-Encoding: gzip"
+    // http://localhost:8888/task echo '{"testgzip": "gzip compress data"}' | curl -v -i --data-binary @-
+    // http://localhost:8888/task
+    svr.POST("/task/{uuid}", [&compare_worker, &task_uuid_set](const HttpReq *req, HttpResp *resp) {
         // We automatically decompress the compressed data sent from the client
         // Support gzip, br only now
         // server: 这里设置压缩，注意，已经在header里面添加了相应的信息!
         resp->set_compress(Compress::GZIP);
         resp->add_header_pair("Content-Type", "application/json");
 
-        const std::string& uuid = req->param("uuid");
+        const std::string &uuid = req->param("uuid");
         if (uuid.empty()) {
             Json json;
             json["error"] = "uuid is empty";
@@ -97,6 +96,8 @@ int main()
             return;
         }
 
+        task_uuid_set.insert(uuid);
+
         // 这里设置返回的内容!
         Json json;
         json["uuid"] = uuid;
@@ -111,7 +112,7 @@ int main()
         resp->set_compress(Compress::GZIP);
         resp->add_header_pair("Content-Type", "application/json");
 
-        const std::string& uuid = req->param("uuid");
+        const std::string &uuid = req->param("uuid");
         if (uuid.empty()) {
             Json json;
             json["error"] = "uuid is empty";
@@ -157,8 +158,8 @@ int main()
         resp->Json(json);
     });
 
-    svr.GET("/task/{uuid}", [&compare_worker](const HttpReq *req, HttpResp *resp) {
-        const std::string& uuid = req->param("uuid");
+    svr.GET("/task/{uuid}", [&compare_worker, &task_uuid_set](const HttpReq *req, HttpResp *resp) {
+        const std::string &uuid = req->param("uuid");
 
         resp->set_compress(Compress::GZIP);
         resp->add_header_pair("Content-Type", "application/json");
@@ -171,11 +172,20 @@ int main()
             return;
         }
 
+        if (task_uuid_set.find(uuid) == task_uuid_set.end()) {
+            Json json;
+            json["uuid"] = uuid;
+            json["error"] = "task not found";
+            resp->Json(json);
+            return;
+        }
+
         Json result_json;
         auto ret = compare_worker.get(result_json);
         if (ret == S_SUCCESS) {
             DC_COMMON_ASSERT(ret == S_SUCCESS);
             resp->Json(result_json);
+            task_uuid_set.erase(uuid);
             return;
         }
 
@@ -187,6 +197,7 @@ int main()
             return;
         }
 
+        task_uuid_set.erase(uuid);
         result_json["uuid"] = uuid;
         result_json["errno"] = (int)ret;
         result_json["error"] = "compare_worker.result failed: error:" + std::to_string((int)ret);

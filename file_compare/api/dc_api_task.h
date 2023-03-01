@@ -51,22 +51,20 @@ typedef struct dc_api_task {
     std::vector<std::string> t_excluded_file_regex;                   // 有哪些文件会被排除
     int t_std_idx;                                                    // 标准方的索引
     // output part
-    std::atomic<int> t_task_status;      // 任务的状态
-    dc_common_code_t t_error;            // 是否出错？
-    std::string t_error_msg;             // 错误信息
-    uint64_t t_diff_rows;                // 不同的行数
-    uint64_t t_printed_bytes;            // 已经输出的字节数
-    uint64_t t_printed_diff_rows;        // 已经输出的不同行数
-    uint64_t t_sql_error_nr;             // 文件读取错误的次数
-    wfrest::Json t_compare_result_json;  // 比较结果的json
+    std::atomic<int> t_task_status{T_TASK_INIT};  // 任务的状态
+    dc_common_code_t t_error;                     // 是否出错？
+    std::string t_error_msg;                      // 错误信息
+    uint64_t t_diff_rows;                         // 不同的行数
+    uint64_t t_printed_bytes;                     // 已经输出的字节数
+    uint64_t t_printed_diff_rows;                 // 已经输出的不同行数
+    uint64_t t_sql_error_nr;                      // 文件读取错误的次数
+    wfrest::Json t_compare_result_json;           // 比较结果的json
+    std::atomic<bool> t_cancel_cmd { false };    // 是否收到了取消命令
 } dc_api_task_t;
 
-dc_common_code_t
-build_task_from_json(const char *task_content,
-                     const uint32_t task_content_len,
-                     dc_api_task_t *task /*已经生成内存*/);
+dc_common_code_t build_task_from_json(const char *task_content, const uint32_t task_content_len,
+                                      dc_api_task_t *task /*已经生成内存*/);
 
-dc_common_code_t
-build_compare_result_json(dc_api_task_t *task /*CHANGED*/);
+dc_common_code_t build_compare_result_json(dc_api_task_t *task /*CHANGED*/);
 
 #endif /* ! _FC_TASK_H_ */

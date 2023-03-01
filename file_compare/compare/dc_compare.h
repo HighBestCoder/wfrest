@@ -55,6 +55,8 @@ private:
     std::atomic<bool> exit_;
     std::thread *worker_threads_{nullptr};
 
+    std::atomic<int> running_task_nr_{0};
+
     task_chan_t task_q_;
     task_chan_t out_q_;
 };

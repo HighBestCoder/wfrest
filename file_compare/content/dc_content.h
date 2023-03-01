@@ -15,7 +15,7 @@
 #include "dc_common_error.h"  // dc_error_t
 
 typedef struct dc_file_attr {
-    int64_t f_size{0};                   // 文件大小
+    int64_t f_size{-1};                   // 文件大小
     std::string f_mode;                  // 文件的权限
     std::string f_owner;                 // 文件拥有者
     std::string f_last_updated;          // 文件最后更新时间
