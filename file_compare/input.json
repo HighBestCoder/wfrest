@@ -11,6 +11,16 @@
       "standard": true,
       "base_dir": "/opt",
       "path_to_compare": "."
+    },
+    {
+      "center": "m2",
+      "host": "localhost",
+      "user": "admin",
+      "password": "admin",
+      "port": 8091,
+      "standard": false,
+      "base_dir": "/opt",
+      "path_to_compare": "."
     }
   ]
 }

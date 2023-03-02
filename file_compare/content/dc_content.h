@@ -15,7 +15,7 @@
 #include "dc_common_error.h"  // dc_error_t
 
 typedef struct dc_file_attr {
-    int64_t f_size{-1};                   // 文件大小
+    int64_t f_size{-1};                  // 文件大小
     std::string f_mode;                  // 文件的权限
     std::string f_owner;                 // 文件拥有者
     std::string f_last_updated;          // 文件最后更新时间
@@ -77,7 +77,7 @@ public:
     // 异步获取整个文件的每一行的sha1
     virtual dc_common_code_t get_file_content(void) override;
 
-    // TODO md5这里有问题!
+    // TODO md5这里有问题!是要原始文件的md5还是我算出来的md5?
     virtual dc_common_code_t get_file_md5(std::string &md5_out) override;
 
     virtual dc_common_code_t do_dir_list_attr(const std::vector<std::string> *dir_list,
@@ -98,6 +98,7 @@ private:
     // worker_线程的读取目录列表的属性
     dc_common_code_t thd_worker_dir_list_attr();
 
+    // 做一些准备工作，比如打开文件，申请内存!
     dc_common_code_t thd_worker_file_content_prepare();
 
     // worker_线程的读取文件的每一行的sha1
@@ -165,10 +166,15 @@ private:
     unsigned char md5_[MD5_DIGEST_LENGTH];
 };
 
+typedef struct http_task_user_data {
+    msg_chan_t *out_q{nullptr};
+    std::string *get_resp_body{nullptr};
+} http_task_user_data_t;
+
 class dc_content_remote_t : public dc_content_t {
 public:
-    dc_content_remote_t(dc_api_ctx_default_server_info_t *server);
-    virtual ~dc_content_remote_t();
+    dc_content_remote_t(dc_api_ctx_default_server_info_t *server) : dc_content_t(server) { server_ = server; }
+    virtual ~dc_content_remote_t() {}
 
 public:
     // 注意： 这些接口都是异步的！
@@ -181,14 +187,33 @@ public:
     virtual dc_common_code_t do_file_content(const std::string &path, std::vector<std::string> *lines_sha1 /*OUT*/,
                                              int *empty_lines /*OUT*/) override;
 
+public:
     // 异步获取整个文件的每一行的sha1
     virtual dc_common_code_t get_file_content() override;
 
     virtual dc_common_code_t get_file_md5(std::string &md5_out) override;
 
+public:  // 获取dir_list的属性
     virtual dc_common_code_t do_dir_list_attr(const std::vector<std::string> *dir_list,
                                               std::vector<dc_file_attr_t> *attr_list /*OUT*/) override;
+
+    // get的时候，要分为两步：
+    // 1. 拿到do_dir_list_attr发出去的请求
+    // 2. 再发去get请求看看执行是否成功?
+    // 所以这里需要一个简单的状态机。
     virtual dc_common_code_t get_dir_list_attr() override;
+
+private:
+    msg_chan_t dir_list_out_q_;
+    http_task_user_data_t http_user_data_;
+    std::vector<dc_file_attr_t> *attr_list_{nullptr};
+
+    enum { DIR_LIST_STATUS_INIT, DIR_LIST_STATUS_SEND, DIR_LIST_STATUS_OVER };
+    int get_dir_list_status_{DIR_LIST_STATUS_OVER};
+    std::string get_resp_body_;
+
+private:
+    dc_api_ctx_default_server_info_t *server_{nullptr};
 };
 
 #endif /* ! _DC_CONTENT_H_ */

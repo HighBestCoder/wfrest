@@ -504,8 +504,7 @@ dc_common_code_t dc_compare_t::exe_sql_job(dc_api_task_t *task) {
             auto local_content_reader = new dc_content_local_t(&server_info);
             dc_content_list.emplace_back(local_content_reader);
         } else {
-            // TODO convert to remote_content
-            auto remote_content_reader = new dc_content_local_t(&server_info);
+            auto remote_content_reader = new dc_content_remote_t(&server_info);
             dc_content_list.emplace_back(remote_content_reader);
         }
     }
@@ -529,6 +528,8 @@ dc_common_code_t dc_compare_t::execute() {
             break;
         }
 
+        DC_COMMON_ASSERT(dir_q_.empty());
+
         dc_api_task_t *task = nullptr;
         bool has_task = task_q_.read_once((void **)&task);
         if (!has_task) {
@@ -544,7 +545,6 @@ dc_common_code_t dc_compare_t::execute() {
         task->t_compare_result_json["diffs"] = wfrest::Json::array();
         task->t_compare_result_json["next_shard"] = -1;
 
-        running_task_nr_++;
         ret = exe_sql_job(task);
         LOG_CHECK_ERR(ret);
 
@@ -553,7 +553,6 @@ dc_common_code_t dc_compare_t::execute() {
             task->t_compare_result_json["error"] = dc_common_code_msg(ret);
         }
         out_q_.write((void *)task);
-        running_task_nr_--;
 
     }  // end while
 

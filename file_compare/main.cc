@@ -4,6 +4,7 @@
 #include "dc_api_task.h"
 #include "dc_common_trace_log.h"
 #include "dc_compare.h"
+#include "dc_internal_task.h"
 #include "wfrest/HttpServer.h"
 #include "wfrest/json.hpp"
 #include "workflow/WFFacilities.h"
@@ -19,6 +20,7 @@ int main() {
 
     HttpServer svr;
     dc_compare_t compare_worker;
+    dc_internal_executor_t internal_executor;
 
     std::unordered_set<std::string> task_uuid_set;
 
@@ -105,7 +107,41 @@ int main() {
         resp->Json(json);
     });
 
-    svr.POST("/internal/task/{uuid}", [&compare_worker](const HttpReq *req, HttpResp *resp) {
+    svr.GET("/internal/dir/task/{uuid}", [&internal_executor](const HttpReq *req, HttpResp *resp) {
+        resp->set_compress(Compress::GZIP);
+        resp->add_header_pair("Content-Type", "application/json");
+
+        const std::string &uuid = req->param("uuid");
+        if (uuid.empty()) {
+            Json json;
+            json["error"] = E_DC_INTERNAL_NO_UUID;
+            resp->Json(json);
+            return;
+        }
+
+        if (req->content_type() != APPLICATION_JSON) {
+            Json json;
+            json["error"] = E_DC_INTERNAL_NOT_JSON;
+            json["uuid"] = uuid;
+            resp->Json(json);
+            return;
+        }
+
+        // 去查看一下uuid是否存在
+        wfrest::Json resp_json_body;
+        auto ret = internal_executor.get(uuid, resp_json_body);
+        if (ret != S_SUCCESS) {
+            Json json;
+            json["error"] = ret;
+            json["uuid"] = uuid;
+            resp->Json(json);
+            return;
+        }
+
+        resp->Json(resp_json_body);
+    });
+
+    svr.POST("/internal/dir/task/{uuid}", [&internal_executor](const HttpReq *req, HttpResp *resp) {
         // We automatically decompress the compressed data sent from the client
         // Support gzip, br only now
         // server: 这里设置压缩，注意，已经在header里面添加了相应的信息!
@@ -115,16 +151,14 @@ int main() {
         const std::string &uuid = req->param("uuid");
         if (uuid.empty()) {
             Json json;
-            json["error"] = "uuid is empty";
-            json["uuid"] = uuid;
+            json["error"] = E_DC_INTERNAL_NO_UUID;
             resp->Json(json);
             return;
         }
 
         if (req->content_type() != APPLICATION_JSON) {
             Json json;
-            json["error"] = "content type is not json";
-            json["content_type"] = req->content_type();
+            json["error"] = E_DC_INTERNAL_NOT_JSON;
             json["uuid"] = uuid;
             resp->Json(json);
             return;
@@ -133,29 +167,52 @@ int main() {
         auto &body = req->body();
         if (body.empty()) {
             Json json;
-            json["error"] = "body is empty";
+            json["error"] = E_DC_INTERNAL_EMPTY_BODY;
             json["uuid"] = uuid;
             resp->Json(json);
             return;
         }
 
-        LOG(DC_COMMON_LOG_INFO, "task:%s body:%s", uuid.c_str(), body.c_str());
-        // run internal task
-        Json json_body = Json::parse(req->body());
-        if (json_body.find("path") == json_body.end()) {
+        wfrest::Json json = wfrest::Json::parse(body);
+        if (json.find("dirs") == json.end()) {
             Json json;
+            json["error"] = E_DC_INTERNAL_NO_DIR_LIST;
             json["uuid"] = uuid;
-            json["error"] = "path is empty";
             resp->Json(json);
             return;
         }
 
-        // try to read the path info.
-        std::string file_path = json_body["path"];
+        if (json.find("uuid") == json.end()) {
+            Json json;
+            json["error"] = E_DC_INTERNAL_NO_UUID;
+            json["uuid"] = uuid;
+            resp->Json(json);
+            return;
+        }
 
-        Json json;
-        json["uuid"] = uuid;
-        resp->Json(json);
+        if (json["uuid"] != uuid) {
+            Json json;
+            json["error"] = E_DC_INTERNAL_UUID_NOT_EQUAL;
+            json["uuid"] = uuid;
+            resp->Json(json);
+            return;
+        }
+
+        dc_internal_task_t task;
+        task.i_uuid = uuid;
+        task.i_task_type = DC_INTERNAL_TASK_TYPE_DIR_ATTR;
+        task.i_json = json;
+
+        // 返回值的格式
+        // uuid: task_uuid
+        // error: S_SUCCESS/other_code
+        // result: [attr1, attr2]
+        internal_executor.add(task);
+
+        Json json_resp;
+        json_resp["uuid"] = uuid;
+        json_resp["error"] = S_SUCCESS;
+        resp->Json(json_resp);
     });
 
     svr.GET("/task/{uuid}", [&compare_worker, &task_uuid_set](const HttpReq *req, HttpResp *resp) {

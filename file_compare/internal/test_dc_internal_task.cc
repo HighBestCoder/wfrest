@@ -1,25 +1,33 @@
-#include "dc_internal_task.h"
-
-#include "dc_content.h"
-#include "dc_common_error.h"
-#include "dc_common_assert.h"
-
 #include <iostream>
 
-int
-main(void)
-{
-    std::string path = "/tmp";
+#include "dc_common_assert.h"
+#include "dc_common_error.h"
+#include "dc_content.h"
+#include "dc_internal_task.h"
 
-    dc_interal_task_t task;
-    task.i_path = path;
-    task.i_uuid = "1234567890";
+// include wfrest::Json header
+#include "wfrest/json.hpp"
 
-    auto ret = dc_internal_task_run(&task);
-    DC_COMMON_ASSERT(ret == S_SUCCESS);
+int main(void) {
+    wfrest::Json json = wfrest::Json::array();
+    std::vector<std::string> dir_list{"abc", "def", "ghi"};
 
-    // print the jon of task
-    std::cout << task.i_json.dump(4) << std::endl;
+    // put dir_list into json
+    for (auto &dir : dir_list) {
+        json.push_back(dir);
+    }
 
+    dir_list.clear();
+
+    // get items from json
+    for (auto &item : json) {
+        std::cout << item << std::endl;
+        dir_list.push_back(item);
+    }
+
+    // print dir_list
+    for (auto &dir : dir_list) {
+        std::cout << dir << std::endl;
+    }
     return 0;
 }

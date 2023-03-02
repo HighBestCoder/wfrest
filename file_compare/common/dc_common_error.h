@@ -1,19 +1,17 @@
 #ifndef _DC_COMMON_ERROR_H_
 #define _DC_COMMON_ERROR_H_
 
-#include "dc_common_arg.h" /* 包含通用设定       */
-
 #include <stdint.h> /* uint8_t          */
 
+#include "dc_common_arg.h" /* 包含通用设定       */
+
 #define TEST_BEGIN()                                            \
-    do                                                          \
-    {                                                           \
+    do {                                                        \
         printf("\033[40;34m%-40s\033[0m\t\tstart\n", __func__); \
     } while (0)
 
 #define TEST_END()                                                               \
-    do                                                                           \
-    {                                                                            \
+    do {                                                                         \
         printf("\033[40;34m%-40s\033[0m\t\t[\033[40;32mOK\033[0m]\n", __func__); \
     } while (0)
 
@@ -25,8 +23,7 @@
  * - 0    : 表示成功
  * - other: 表示失败
  */
-typedef enum dc_common_code
-{
+typedef enum dc_common_code {
     S_SUCCESS = 0,
     E_RETRY = 1,
 
@@ -48,6 +45,13 @@ typedef enum dc_common_code
     E_OS_ENV_CHDIR,
     E_OS_ENV_LOCALTIME,
 
+    /* INTERNAL 出错!*/
+    E_DC_INTERNAL_NO_UUID,
+    E_DC_INTERNAL_NOT_JSON,
+    E_DC_INTERNAL_EMPTY_BODY,
+    E_DC_INTERNAL_NO_DIR_LIST,
+    E_DC_INTERNAL_UUID_NOT_EQUAL,
+
     /* CONTENT */
     E_DC_CONTENT_DIR,
     E_DC_CONTENT_RETRY,
@@ -68,8 +72,7 @@ typedef enum dc_common_code
     E_DC_COMMON_ERROR_END,
 } dc_common_code_t;
 
-typedef enum dc_common_task_stat
-{
+typedef enum dc_common_task_stat {
     T_TASK_INIT = 0,
 
     // 添加了到比较任务里面!
@@ -84,13 +87,11 @@ typedef enum dc_common_task_stat
     T_TASK_INVALID,
 } dc_common_task_stat_t;
 
-const char *
-dc_common_error_task_status(uint32_t task_status);
+const char* dc_common_error_task_status(uint32_t task_status);
 
 /*
  * 通过code_t查询到具体的出错信息
  */
-const char *
-dc_common_code_msg(dc_common_code_t error);
+const char* dc_common_code_msg(dc_common_code_t error);
 
 #endif /* !_DC_COMMON_ERROR_H_ */

@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <openssl/sha.h>  // sha1
 #include <pwd.h>
+#include <signal.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -11,6 +12,12 @@
 #include "dc_common_error.h"
 #include "dc_common_log.h"
 #include "dc_common_trace_log.h"
+#include "wfrest/Compress.h"
+#include "wfrest/ErrorCode.h"
+#include "wfrest/HttpServer.h"
+#include "wfrest/json.hpp"
+#include "workflow/WFFacilities.h"
+#include "workflow/WFTaskFactory.h"
 
 #define DC_CONTENT_MEM_ALIGN 8192          // 8K
 #define DC_CONTENT_FILE_READ_BUF 16777216  // 读文件的缓冲区大小 16M
@@ -584,4 +591,240 @@ dc_common_code_t dc_content_local_t::get_file_md5(std::string &out) {
     md5_str[MD5_DIGEST_LENGTH * 2] = '\0';
     out = md5_str;
     return S_SUCCESS;
+}
+
+// 注意： 这些接口都是异步的！
+// 发送命令去获取整个文件的属性
+dc_common_code_t dc_content_remote_t::do_file_attr(const std::string &path, dc_file_attr_t *attr /*OUT*/) {
+    return E_NOT_IMPL;
+}
+// 异步获取文件的attr
+dc_common_code_t dc_content_remote_t::get_file_attr(void) { return E_NOT_IMPL; }
+
+// 发送命令去获取整个文件的每一行的sha1
+dc_common_code_t dc_content_remote_t::do_file_content(const std::string &path,
+                                                      std::vector<std::string> *lines_sha1 /*OUT*/,
+                                                      int *empty_lines /*OUT*/) {
+    return E_NOT_IMPL;
+}
+
+// 异步获取整个文件的每一行的sha1
+dc_common_code_t dc_content_remote_t::get_file_content() { return E_NOT_IMPL; }
+
+dc_common_code_t dc_content_remote_t::get_file_md5(std::string &md5_out) { return E_NOT_IMPL; }
+
+void http_post_callback(WFHttpTask *task) {
+    const void *body;
+    size_t body_len;
+    int ret = task->get_resp()->get_parsed_body(&body, &body_len);
+    DC_COMMON_ASSERT(ret == wfrest::StatusOK);
+
+    http_task_user_data_t *user_data = (http_task_user_data_t *)task->user_data;
+    std::string resp_body;
+    ret = wfrest::Compressor::ungzip(static_cast<const char *>(body), body_len, &resp_body);
+    DC_COMMON_ASSERT(ret == wfrest::StatusOK);
+
+    wfrest::Json json = wfrest::Json::parse(resp_body);
+    // check has error message ?
+    DC_COMMON_ASSERT(json.find("error") != json.end());
+    // get error from json
+    std::string error = json["error"];
+    // convert to dc_common_code_t
+    dc_common_code_t code = (dc_common_code_t)std::stoi(error);
+
+    msg_chan_t *out_q = user_data->out_q;
+    DC_COMMON_ASSERT(out_q != nullptr);
+    out_q->write(code);
+}
+
+int http_post_task(const std::string &url, const std::string &body, http_task_user_data_t *user_data) {
+    WFHttpTask *task = WFTaskFactory::create_http_task(url,
+                                                       /*redirect_max*/ 4,
+                                                       /*retry_max*/ 2, http_post_callback);
+
+    std::string zip_body;
+    int ret = wfrest::Compressor::gzip(&body, &zip_body);
+    DC_COMMON_ASSERT(ret == wfrest::StatusOK);
+
+    task->user_data = user_data;  // 指向ctx，后面会delete
+    task->get_req()->set_method("POST");
+    task->get_req()->add_header_pair("Content-Encoding", "gzip");
+    task->get_req()->add_header_pair("Content-Type", "application/json");
+    task->get_req()->append_output_body_nocopy(zip_body.c_str(), zip_body.size());
+    task->start();
+
+    return 0;
+}
+
+dc_common_code_t dc_content_remote_t::do_dir_list_attr(const std::vector<std::string> *dir_list,
+                                                       std::vector<dc_file_attr_t> *attr_list /*OUT*/) {
+    DC_COMMON_ASSERT(dir_list != nullptr);
+    DC_COMMON_ASSERT(attr_list != nullptr);
+
+    attr_list_ = attr_list;
+
+    // build request body to get dirs' attr
+    wfrest::Json body_json;
+    body_json["uuid"] = server_->c_task->t_task_uuid;
+    body_json["base_dir"] = server_->c_base_dir;
+    body_json["dirs"] = wfrest::Json::array();
+    for (auto &dir : *dir_list) {
+        body_json["dirs"].push_back(dir);
+    }
+
+    // after build the request body, we need to send the request
+    std::string url = "http://" + server_->c_host + ":" + std::to_string(server_->c_port) + "/internal/dir/task/" +
+                      server_->c_task->t_task_uuid;
+    std::string body = body_json.dump();
+
+    http_user_data_.out_q = &dir_list_out_q_;
+    http_user_data_.get_resp_body = nullptr;
+
+    http_post_task(url, body, &http_user_data_);
+    get_dir_list_status_ = DIR_LIST_STATUS_INIT;
+
+    return S_SUCCESS;
+}
+
+static void http_get_callback(WFHttpTask *task) {
+    const void *body;
+    size_t body_len;
+    int ret = task->get_resp()->get_parsed_body(&body, &body_len);
+    DC_COMMON_ASSERT(ret == wfrest::StatusOK);
+
+    http_task_user_data_t *user_data = (http_task_user_data_t *)task->user_data;
+    std::string resp_body;
+    ret = wfrest::Compressor::ungzip(static_cast<const char *>(body), body_len, &resp_body);
+    DC_COMMON_ASSERT(ret == wfrest::StatusOK);
+
+    wfrest::Json json = wfrest::Json::parse(resp_body);
+    // check has error message ?
+    DC_COMMON_ASSERT(json.find("error") != json.end());
+    // get error from json
+    std::string error = json["error"];
+    // convert to dc_common_code_t
+    dc_common_code_t code = (dc_common_code_t)std::stoi(error);
+
+    if (code == S_SUCCESS && user_data->get_resp_body != nullptr) {
+        user_data->get_resp_body->swap(resp_body);
+    }
+
+    msg_chan_t *out_q = user_data->out_q;
+    DC_COMMON_ASSERT(out_q != nullptr);
+
+    out_q->write(code);
+}
+
+int http_get_task(const std::string &url, http_task_user_data_t *user_data) {
+    WFHttpTask *task = WFTaskFactory::create_http_task(url,
+                                                       /*redirect_max*/ 4,
+                                                       /*retry_max*/ 2, http_get_callback);
+    task->user_data = user_data;
+    task->get_req()->set_method("GET");
+    task->get_req()->add_header_pair("Content-Type", "application/json");
+    task->start();
+    return 0;
+}
+
+dc_common_code_t dc_content_remote_t::get_dir_list_attr() {
+    int ret = S_SUCCESS;
+
+    // 结束之后不可以再call
+    DC_COMMON_ASSERT(get_dir_list_status_ != DIR_LIST_STATUS_OVER);
+
+    // 如果只是发送了请求给server，那么就需要等待server的回复
+    if (get_dir_list_status_ == DIR_LIST_STATUS_INIT) {
+        // 这里去查看一下是否给了回复
+
+        auto has_msg = dir_list_out_q_.read_once(&ret);
+        if (!has_msg) {
+            return E_DC_CONTENT_RETRY;
+        }
+
+        // 如果有回复，那么就需要看一下ret的值
+        // 这里在请求的时候，是不可能返回retry的。
+        // 也就是说，当不成功的时候，就返回了失败!
+        if (ret != S_SUCCESS) {
+            return (dc_common_code_t)ret;
+        }
+
+        // 说明接收方已经成功接收到了!
+        // 开始发送get请求，去尝试拿一下dir_list的attr
+        // 这里发送get请求
+        std::string url = "http://" + server_->c_host + ":" + std::to_string(server_->c_port) + "/internal/dir/task/" +
+                          server_->c_task->t_task_uuid;
+
+        http_user_data_.out_q = &dir_list_out_q_;
+        http_user_data_.get_resp_body = &get_resp_body_;
+
+        http_get_task(url, &http_user_data_);
+
+        // 表示已经发送了get命令!
+        get_dir_list_status_ = DIR_LIST_STATUS_SEND;
+
+        return E_DC_CONTENT_RETRY;
+    } else if (get_dir_list_status_ == DIR_LIST_STATUS_SEND) {
+        auto has_msg = dir_list_out_q_.read_once(&ret);
+        if (!has_msg) {
+            return E_DC_CONTENT_RETRY;
+        }
+
+        // 如果有回复，那么就需要看一下ret的值
+        if (ret != S_SUCCESS) {
+            // 如果get的时候，返回的消息是retry
+            // 那么这个时候，就需要重新发送get请求
+            // 因为服务方可能还没有把这个任务做完!
+            if (ret == E_DC_CONTENT_RETRY) {
+                std::string url = "http://" + server_->c_host + ":" + std::to_string(server_->c_port) +
+                                  "/internal/dir/task/" + server_->c_task->t_task_uuid;
+
+                http_user_data_.out_q = &dir_list_out_q_;
+                http_user_data_.get_resp_body = &get_resp_body_;
+
+                http_get_task(url, &http_user_data_);
+
+                return E_DC_CONTENT_RETRY;
+            }
+
+            // 服务方返回其他错误!
+            return (dc_common_code_t)ret;
+        }
+
+        // 说明接收方已经成功接收到resp_body
+        // 开始解析resp_body
+        // 并且把结果放到attr_list中
+        wfrest::Json json = wfrest::Json::parse(get_resp_body_);
+        DC_COMMON_ASSERT(json.find("error") != json.end());
+
+        std::string error = json["error"];
+        // server在处理get的时候出错了!
+        dc_common_code_t code = (dc_common_code_t)std::stoi(error);
+        if (code != S_SUCCESS) {
+            return code;
+        }
+
+        DC_COMMON_ASSERT(json.find("result") != json.end());
+        DC_COMMON_ASSERT(json.find("uuid") != json.end());
+        DC_COMMON_ASSERT(json["uuid"] == server_->c_task->t_task_uuid);
+
+        wfrest::Json result = json["result"];
+        // iterate result json array, then conver the result to attr_list
+        for (auto &item : result) {
+            dc_file_attr_t attr;
+            // because this is dir, so, no size should set.
+            attr.f_mode = item["mode"];
+            attr.f_owner = item["owner"];
+            attr.f_last_updated = item["last_updated"];
+            attr.f_code = item["code"];
+
+            attr_list_->push_back(attr);
+        }
+
+        get_dir_list_status_ = DIR_LIST_STATUS_OVER;
+        return S_SUCCESS;
+    }
+
+    DC_COMMON_ASSERT(0 == "should not goes to here");
+
+    return E_NOT_IMPL;
 }
